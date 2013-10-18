@@ -76,27 +76,25 @@ class Pool():
         """Pick a random subset of filenames in the Pool and return them as a
         list.  If the Pool isn't sufficiently large, return an empty list.
         """
-        poolfiles = os.listdir(config.get('pool', 'path'))
-        poolsize = len(poolfiles)
-        log.debug("Pool contains %s messages", poolsize)
-        if poolsize < config.getint('pool', 'size'):
+        files = os.listdir(config.get('pool', 'path'))
+        size = len(files)
+        log.debug("Pool contains %s messages", size)
+        if size < config.getint('pool', 'size'):
             # The pool is too small to send messages.
             log.info("Pool is insufficiently populated to trigger sending.")
             return []
-        process_num = (poolsize * config.getint('pool', 'rate')) / 100
+        process_num = (size * config.getint('pool', 'rate')) / 100
         log.debug("Attempting to send %s messages from the pool.", process_num)
-        assert process_num <= poolsize
+        assert process_num <= size
         # Shuffle the poolfiles into a random order
-        random.shuffle(poolfiles)
+        random.shuffle(files)
         # Even though the list is shuffled, pick a random point in the list to
         # slice from/to.  It does no harm, might do some good and doesn't cost
         # a lot!
-        startmax = poolsize - process_num
-        if startmax <= 0:
-            return poolfiles
+        startmax = size - process_num
         start = random.randint(0, startmax - 1)
         end = start + process_num
-        return poolfiles[start:end]
+        return files[start:end]
 
 
 log = logging.getLogger("newmix.%s" % __name__)
@@ -111,4 +109,4 @@ if (__name__ == "__main__"):
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     p = Pool()
-    print len(p.select())
+    print p.select()
