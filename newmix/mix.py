@@ -231,7 +231,7 @@ class Message():
         # headers for padding) with the body.
         self.packet = (''.join(headers) +
                        Random.new().read((10 - len(headers)) * 1024) +
-                       body)
+                       body).encode('base64')
 
     def decode(self, packet):
         self.text = None
@@ -307,12 +307,9 @@ def new_msg():
     chain = [test_rem, test_rem]
     plain_text = "This is a test message\n" * 10
     message.encode(plain_text, chain)
-
-    print len(message.packet.encode('base64'))
-
-    #while message.text is None:
-    #    message.decode(message.packet)
-    #print message.text
+    while message.text is None:
+        message.decode(message.packet)
+    print message.text
     
 
 log = logging.getLogger("newmix.%s" % __name__)

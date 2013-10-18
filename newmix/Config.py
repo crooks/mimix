@@ -35,12 +35,22 @@ config.set('general', 'name', 'noname')
 config.set('general', 'address', 'nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
-config.set('general', 'pooldir', os.path.join(homedir, 'pooldir'))
 
-# Try and process the .pymasterrc file.  If it doesn't exist, we
+config.add_section('logging')
+config.set('logging', 'level', 'info')
+config.set('logging', 'format',
+           '%(asctime)s %(name)s %(levelname)s %(message)s')
+config.set('logging', 'datefmt', '%Y-%m-%d %H:%M:%S')
+config.set('logging', 'retain', 7)
+
+config.add_section('pool')
+config.set('pool', 'path', os.path.join(homedir, 'newmix', 'pool'))
+config.set('pool', 'size', 45)
+config.set('pool', 'rate', 65)
+config.set('pool', 'interval', '15m')
+
+# Try and process the .newmixrc file.  If it doesn't exist, we
 # bailout as some options are compulsory.
-#if options.rc:
-#    configfile = options.rc
 if 'NEWMIX' in os.environ:
     configfile = os.environ['NEWMIX']
 else:
