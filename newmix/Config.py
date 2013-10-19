@@ -35,6 +35,7 @@ config.set('general', 'name', 'noname')
 config.set('general', 'address', 'nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
+config.set('general', 'msgstore', os.path.join(homedir, 'newmix', 'msgstore'))
 
 config.add_section('logging')
 config.set('logging', 'level', 'info')
@@ -48,6 +49,10 @@ config.set('pool', 'path', os.path.join(homedir, 'newmix', 'pool'))
 config.set('pool', 'size', 45)
 config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')
+
+config.add_section('http')
+config.set('http', 'path', os.path.join(homedir, 'newmix', 'http'))
+config.set('http', 'cgipath', os.path.join(homedir, 'newmix', 'cgi-bin'))
 
 # Try and process the .newmixrc file.  If it doesn't exist, we
 # bailout as some options are compulsory.

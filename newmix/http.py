@@ -31,10 +31,9 @@ def get(url):
     return r.text
 
 def post(msg):
-    payload = {'b64': msg}
-    r = requests.post('http://www.mixmin.net:8000/cgi-bin/test.py',
+    payload = {'newmix': msg}
+    r = requests.post('http://www.mixmin.net:8000/cgi-bin/webcgi.py',
                       data=payload)
-    print r.status_code
 
 if __name__ == '__main__':
     post("Test Message\n")
