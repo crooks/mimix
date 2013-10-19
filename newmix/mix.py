@@ -24,11 +24,13 @@ import struct
 import timing
 import hashlib
 import logging
+import Pool
 import sys
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
 import keys
+
 
 class PacketError(Exception):
     pass
@@ -65,22 +67,22 @@ class PacketInfo(object):
         assert chunknum <= numchunks
         messageid = Random.new().read(16)
         iv = Random.new().read(16)
-        packet = struct.pack('<BB16s16s222s', chunknum,
-                                              numchunks,
-                                              messageid,
-                                              iv,
-                                              Random.new().read(222))
+        packet = struct.pack('<BB16s16s222s',
+                             chunknum,
+                             numchunks,
+                             messageid,
+                             iv,
+                             Random.new().read(222))
         assert len(packet) == 256
         self.iv = iv
         self.packet = packet
-        
+
     def decode_exit(self, packet):
         assert len(packet) == 256
         (self.chunknum,
          self.numchunks,
          self.messageid,
-         self.iv
-        ) = struct.unpack('<BB16s16s', packet[:34])
+         self.iv) = struct.unpack('<BB16s16s', packet[:34])
 
 
 class Inner(object):
@@ -100,7 +102,7 @@ class Inner(object):
         # Message Payload.
         aes = Random.new().read(32)
         packet_info = PacketInfo()
-        if next_hop == None:
+        if next_hop is None:
             packet_info.encode_exit()
             pkt_type = "1"
         else:
@@ -108,12 +110,13 @@ class Inner(object):
             pkt_type = "0"
         # Days since Epoch
         timestamp = timing.epoch_days()
-        packet = struct.pack('<16s32sc256sH13s', packet_id,
-                                                aes,
-                                                pkt_type,
-                                                packet_info.packet,
-                                                timestamp,
-                                                Random.new().read(13))
+        packet = struct.pack('<16s32sc256sH13s',
+                             packet_id,
+                             aes,
+                             pkt_type,
+                             packet_info.packet,
+                             timestamp,
+                             Random.new().read(13))
         digest = hashlib.sha512(packet).digest()
         packet += digest
         assert len(packet) == 384
@@ -160,8 +163,9 @@ class Message():
     def __init__(self):
         self.packet_size = 1024
         self.rsa_data_size = 512
-        self.text = None
+        self.is_exit = False
         self.keystore = keys.Keystore()
+        self.pool = Pool.Pool()
 
     def encode(self, msg, chain):
         headers = []
@@ -231,11 +235,12 @@ class Message():
         # headers for padding) with the body.
         self.packet = (''.join(headers) +
                        Random.new().read((10 - len(headers)) * 1024) +
-                       body).encode('base64')
+                       body)
+        self._packet_write(next_hop)
 
     def decode(self, packet):
-        self.text = None
         assert len(packet) == 20480
+        self.is_exit = False
         # Split the header component into its 10 distinct headers.
         headers = self._split_headers(packet[:10240])
         # The first header gets processed and removed at this hop.
@@ -269,19 +274,30 @@ class Message():
             for h in range(9):
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[h])
                 headers[h] = cipher.decrypt(headers[h])
-            cipher = AES.new(inner.aes, AES.MODE_CFB,ivs[8])
+            cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
             self.packet = (''.join(headers) +
                            Random.new().read(1024) +
                            cipher.decrypt(packet[10240:20480]))
-            assert len(self.packet) == 20480
+            self._packet_write(inner.packet_info.next_hop)
+            self.is_exit = False
         elif inner.pkt_type == "1":
-            cipher = AES.new(inner.aes, AES.MODE_CFB,inner.packet_info.iv)
-            length, digest, body = struct.unpack("<H64s10174s",
-                                        cipher.decrypt(packet[10240:20480]))
+            cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
+            (length,
+             digest,
+             body) = struct.unpack("<H64s10174s",
+                                   cipher.decrypt(packet[10240:20480]))
             body = body[:length]
             if digest != hashlib.sha512(body).digest():
                 raise PacketError("Content Digest Error")
             self.text = body
+            self.is_exit = True
+
+    def _packet_write(self, next_hop):
+        expire = timing.epoch_days() + 7
+        with open(self.pool.filename(), 'w') as f:
+            f.write("%s\n" % next_hop)
+            f.write("%s\n" % expire)
+            f.write("%s\n" % self.packet.encode('base64'))
 
     def _split_headers(self, headbytes):
         assert len(headbytes) % 1024 == 0
@@ -299,7 +315,7 @@ class Message():
         print "RSA Data: %s" % head[18:60].encode('hex')
         print "IV: %s" % head[530:546].encode('hex')
         print "Digest: %s" % head[960:990].encode('hex')
-    
+
 
 def new_msg():
     message = Message()
@@ -307,10 +323,7 @@ def new_msg():
     chain = [test_rem, test_rem]
     plain_text = "This is a test message\n" * 10
     message.encode(plain_text, chain)
-    while message.text is None:
-        message.decode(message.packet)
-    print message.text
-    
+
 
 log = logging.getLogger("newmix.%s" % __name__)
 if (__name__ == "__main__"):
