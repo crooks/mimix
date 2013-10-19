@@ -29,6 +29,9 @@ from Crypto import Random
 import timing
 
 
+class TooSmallError(Exception):
+    pass
+
 class Pool():
     def __init__(self):
         self.next_process = timing.future(mins=1)
@@ -82,7 +85,7 @@ class Pool():
         if size < config.getint('pool', 'size'):
             # The pool is too small to send messages.
             log.info("Pool is insufficiently populated to trigger sending.")
-            return []
+            raise TooSmallError('Pool too small')
         process_num = (size * config.getint('pool', 'rate')) / 100
         log.debug("Attempting to send %s messages from the pool.", process_num)
         assert process_num <= size
@@ -92,9 +95,13 @@ class Pool():
         # slice from/to.  It does no harm, might do some good and doesn't cost
         # a lot!
         startmax = size - process_num
-        start = random.randint(0, startmax - 1)
+        if startmax == 0:
+            start = 0
+        else:
+            start = random.randint(0, startmax - 1)
         end = start + process_num
-        return files[start:end]
+        for f in files[start:end]:
+            yield os.path.join(config.get('pool', 'path'), f)
 
 
 log = logging.getLogger("newmix.%s" % __name__)
@@ -109,4 +116,6 @@ if (__name__ == "__main__"):
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     p = Pool()
-    print p.select()
+    generator = p.select()
+    for f in generator:
+        print f
