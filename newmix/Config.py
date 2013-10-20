@@ -35,8 +35,10 @@ config.set('general', 'name', 'noname')
 config.set('general', 'address', 'nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
+config.set('general', 'pidfile', os.path.join(homedir, 'newmix', 'newmix.pid'))
 
 config.add_section('logging')
+config.set('logging', 'path', os.path.join(homedir, 'newmix', 'log'))
 config.set('logging', 'level', 'info')
 config.set('logging', 'format',
            '%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -44,8 +46,10 @@ config.set('logging', 'datefmt', '%Y-%m-%d %H:%M:%S')
 config.set('logging', 'retain', 7)
 
 config.add_section('pool')
-config.set('pool', 'msgstore', os.path.join(homedir, 'newmix', 'msgstore'))
-config.set('pool', 'path', os.path.join(homedir, 'newmix', 'pool'))
+config.set('pool', 'inbound_pool', os.path.join(homedir, 'newmix',
+           'inbound_pool'))
+config.set('pool', 'outbound_pool', os.path.join(homedir, 'newmix',
+           'outbound_pool'))
 config.set('pool', 'size', 45)
 config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')

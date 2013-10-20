@@ -21,38 +21,52 @@
 # this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
-import mix
 import sys
-import Pool
 import logging
+import os.path
 import requests
 from Config import config
+import mix
+import Pool
+import timing
+from daemon import Daemon
 
 m = mix.Message()
 pool = Pool.Pool()
 
-def process_inbound():
-    generator = pool.inbound_select()
-    for filename in generator:
-        with open(filename, 'r') as f:
-            m.decode(f.read().decode('base64'))
-            pool.inbound_delete(filename)
-            if m.is_exit:
-                print m.text
+class Server(Daemon):
+    def run(self):
+        while True:
+            self.process_inbound()
+            if pool.outbound_trigger:
+                self.process_outbound()
+            timing.sleep(60)
 
-def process_outbound():
-    generator = pool.select()
-    for filename in generator:
-        with open(filename, 'r') as f:
-            next_hop = f.readline().rstrip()
-            expire = f.readline().rstrip()
-            payload = {'newmix': f.read()}
+    def process_inbound(self):
+        generator = pool.inbound_select()
+        for filename in generator:
+            with open(filename, 'r') as f:
+                m.decode(f.read().decode('base64'))
+                pool.inbound_delete(filename)
+                if m.is_exit:
+                    print m.text
+
+    def process_outbound(self):
+        generator = pool.outbound_select()
+        for filename in generator:
+            with open(filename, 'r') as f:
+                next_hop = f.readline().rstrip()
+                expire = f.readline().rstrip()
+                payload = {'newmix': f.read()}
+            if expire < timing.epoch_days():
+                log.warn("Giving up on sending msg to %s." % next_hop)
+                pool.outbound_delete(filename)
+                continue
             try:
                 r = requests.post('http://%s/cgi-bin/webcgi.py' % next_hop,
                                   data=payload)
-                print r.status_code
                 if r.status_code == requests.codes.ok:
-                    pool.delete(filename)
+                    pool.outbound_delete(filename)
             except requests.exceptions.ConnectionError:
                 log.info("Unable to connect to %s", next_hop)
 
@@ -65,8 +79,10 @@ if (__name__ == "__main__"):
                  'warn': logging.WARN, 'error': logging.ERROR}
     log = logging.getLogger("newmix")
     log.setLevel(loglevels[config.get('logging', 'level')])
-    handler = logging.StreamHandler()
+    filename = os.path.join(config.get('logging', 'path'), 'newmix.log')
+    #handler = logging.StreamHandler()
+    handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    process_inbound()
-    process_outbound()
+    s = Server(config.get('general', 'pidfile'))
+    s.run()
