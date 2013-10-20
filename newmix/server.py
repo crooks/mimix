@@ -31,7 +31,16 @@ from Config import config
 m = mix.Message()
 pool = Pool.Pool()
 
-def process():
+def process_inbound():
+    generator = pool.inbound_select()
+    for filename in generator:
+        with open(filename, 'r') as f:
+            m.decode(f.read().decode('base64'))
+            pool.inbound_delete(filename)
+            if m.is_exit:
+                print m.text
+
+def process_outbound():
     generator = pool.select()
     for filename in generator:
         with open(filename, 'r') as f:
@@ -59,4 +68,5 @@ if (__name__ == "__main__"):
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    process()
+    process_inbound()
+    process_outbound()

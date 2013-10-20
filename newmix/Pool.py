@@ -100,6 +100,22 @@ class Pool():
         for f in files[start:end]:
             yield os.path.join(config.get('pool', 'path'), f)
 
+    def inbound_select(self):
+        """Pick a random subset of filenames in the Pool and return them as a
+        list.  If the Pool isn't sufficiently large, return an empty list.
+        """
+        files = os.listdir(config.get('pool', 'msgstore'))
+        log.debug("Processing %s inbound messages in store.", len(files))
+        for f in files:
+            yield os.path.join(config.get('pool', 'msgstore'), f)
+
+    def inbound_delete(self, fqfn):
+        """Delete files from the Mixmaster Pool."""
+        head, tail = os.path.split(fqfn)
+        assert head == config.get('pool', 'msgstore')
+        os.remove(fqfn)
+        log.debug("%s: Deleted", tail)
+
 
 log = logging.getLogger("newmix.%s" % __name__)
 if (__name__ == "__main__"):
