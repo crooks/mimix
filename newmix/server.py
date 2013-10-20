@@ -25,6 +25,7 @@ import mix
 import sys
 import Pool
 import logging
+import requests
 from Config import config
 
 m = mix.Message()
@@ -32,17 +33,20 @@ pool = Pool.Pool()
 
 def process():
     generator = pool.select()
-    try:
-        for filename in generator:
-            with open(filename, 'r') as f:
-                next_hop = f.readline().rstrip()
-                expire = f.readline().rstrip()
-                m.decode(f.read().decode('base64'))
-                pool.delete(filename)
-                if m.is_exit:
-                    print m.text
-    except Pool.TooSmallError:
-        pass
+    for filename in generator:
+        with open(filename, 'r') as f:
+            next_hop = f.readline().rstrip()
+            expire = f.readline().rstrip()
+            payload = {'newmix': f.read()}
+            try:
+                r = requests.post('http://%s/cgi-bin/webcgi.py' % next_hop,
+                                  data=payload)
+                print r.status_code
+                if r.status_code == requests.codes.ok:
+                    pool.delete(filename)
+            except requests.exceptions.ConnectionError:
+                log.info("Unable to connect to %s", next_hop)
+
 
 log = logging.getLogger("newmix.%s" % __name__)
 if (__name__ == "__main__"):
