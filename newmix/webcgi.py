@@ -34,7 +34,7 @@ content = form.getvalue('newmix')
 if content is None:
     sys.exit(0)
 content_len = len(content)
-if content_len > 27000 and content_len < 28500:
+if content_len > 27000 and content_len < 30000:
     fn = os.path.join('/home/crooks/newmix/msgstore',
                      'm' + Random.new().read(4).encode('hex'))
     while os.path.isfile(fn):
