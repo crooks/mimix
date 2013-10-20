@@ -29,9 +29,6 @@ from Crypto import Random
 import timing
 
 
-class TooSmallError(Exception):
-    pass
-
 class Pool():
     def __init__(self):
         self.next_process = timing.future(mins=1)
@@ -85,7 +82,7 @@ class Pool():
         if size < config.getint('pool', 'size'):
             # The pool is too small to send messages.
             log.info("Pool is insufficiently populated to trigger sending.")
-            raise TooSmallError('Pool too small')
+            files = []
         process_num = (size * config.getint('pool', 'rate')) / 100
         log.debug("Attempting to send %s messages from the pool.", process_num)
         assert process_num <= size
