@@ -31,14 +31,12 @@ import Pool
 import timing
 from daemon import Daemon
 
-m = mix.Message()
-pool = Pool.Pool()
 
 class Server(Daemon):
     def run(self):
         while True:
             self.process_inbound()
-            if pool.outbound_trigger:
+            if pool.outbound_trigger():
                 self.process_outbound()
             timing.sleep(60)
 
@@ -84,5 +82,15 @@ if (__name__ == "__main__"):
     handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    s = Server(config.get('general', 'pidfile'))
-    s.run()
+
+    m = mix.Message()
+    pool = Pool.Pool()
+    s = Server(config.get('general', 'pidfile'),
+               stderr='/home/crooks/newmix/log/err.log')
+
+    if len(sys.argv) >= 1:
+        cmd = sys.argv[1]
+        if cmd == "--start":
+            s.start()
+        elif cmd == "--stop":
+            s.stop()

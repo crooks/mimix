@@ -59,16 +59,12 @@ class Pool():
             f.write(msg)
 
     def outbound_trigger(self):
-        return timing.now() >= self.outbound_trigger_time()
+        return timing.now() >= self.outbound_trigger_time
 
     def outbound_select(self):
         """Pick a random subset of filenames in the Pool and return them as a
         list.  If the Pool isn't sufficiently large, return an empty list.
         """
-        # Set the point in the future at which another outbound pool run will
-        # occur.
-        next_outbound = timing.dhms_future(config.get('pool', 'interval'))
-        self.outbound_trigger_time = next_outbound
         files = os.listdir(config.get('pool', 'outbound_pool'))
         size = len(files)
         log.debug("Pool contains %s messages", size)
@@ -81,6 +77,7 @@ class Pool():
         log.debug("Attempting to send %s messages from the pool.", process_num)
         assert process_num <= size
         # Shuffle the poolfiles into a random order
+        Random.atfork()
         random.shuffle(files)
         # Even though the list is shuffled, pick a random point in the list to
         # slice from/to.  It does no harm, might do some good and doesn't cost
@@ -93,6 +90,12 @@ class Pool():
         end = start + process_num
         for f in files[start:end]:
             yield os.path.join(config.get('pool', 'outbound_pool'), f)
+        # Set the point in the future at which another outbound pool run will
+        # occur.
+        next_outbound = timing.dhms_future(config.get('pool', 'interval'))
+        self.outbound_trigger_time = next_outbound
+        log.debug("Next outbound pool run: %s",
+                  timing.timestamp(self.outbound_trigger_time))
 
     def outbound_delete(self, fqfn):
         """Delete files from the Mixmaster Pool."""
