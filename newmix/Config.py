@@ -36,6 +36,7 @@ config.set('general', 'address', 'nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
 config.set('general', 'pidfile', os.path.join(homedir, 'newmix', 'newmix.pid'))
+config.set('general', 'version', '0.1-alpha1')
 
 config.add_section('logging')
 config.set('logging', 'path', os.path.join(homedir, 'newmix', 'log'))
@@ -53,6 +54,7 @@ config.set('pool', 'outbound_pool', os.path.join(homedir, 'newmix',
 config.set('pool', 'size', 45)
 config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')
+config.set('pool', 'expire', 7)
 
 config.add_section('http')
 config.set('http', 'path', os.path.join(homedir, 'newmix', 'http'))

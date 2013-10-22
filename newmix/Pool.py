@@ -41,7 +41,7 @@ class Pool():
         log.debug("First pool process at %s",
                   timing.timestamp(self.outbound_trigger_time))
 
-    def filename(self):
+    def outbound_filename(self):
         """ Return a unique, fully-qualified, random filename within the pool
             folder.
         """
@@ -113,7 +113,9 @@ class Pool():
         list.  If the Pool isn't sufficiently large, return an empty list.
         """
         files = os.listdir(config.get('pool', 'inbound_pool'))
-        log.debug("Processing %s inbound messages in store.", len(files))
+        inbound = len(files)
+        if inbound > 0:
+            log.debug("Processing %s inbound messages in store.", inbound)
         for f in files:
             yield os.path.join(config.get('pool', 'inbound_pool'), f)
 

@@ -26,6 +26,7 @@ import hashlib
 import logging
 import Pool
 import sys
+from Config import config
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
@@ -165,9 +166,8 @@ class Message():
         self.rsa_data_size = 512
         self.is_exit = False
         self.keystore = keys.Keystore()
-        self.pool = Pool.Pool()
 
-    def encode(self, msg, chain):
+    def encode(self, msg, chain, filename):
         headers = []
         # next_hop is used to ascertain is this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -236,9 +236,9 @@ class Message():
         self.packet = (''.join(headers) +
                        Random.new().read((10 - len(headers)) * 1024) +
                        body)
-        self._packet_write(next_hop)
+        self.packet_write(next_hop, filename)
 
-    def decode(self, packet):
+    def decode(self, packet, outbound_filename):
         assert len(packet) == 20480
         self.is_exit = False
         # Split the header component into its 10 distinct headers.
@@ -278,8 +278,9 @@ class Message():
             self.packet = (''.join(headers) +
                            Random.new().read(1024) +
                            cipher.decrypt(packet[10240:20480]))
-            self._packet_write(inner.packet_info.next_hop)
+            self.packet_write(inner.packet_info.next_hop, outbound_filename)
             self.is_exit = False
+
         elif inner.pkt_type == "1":
             cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
             (length,
@@ -292,13 +293,6 @@ class Message():
             self.text = body
             self.is_exit = True
 
-    def _packet_write(self, next_hop):
-        expire = timing.epoch_days() + 7
-        with open(self.pool.filename(), 'w') as f:
-            f.write("%s\n" % next_hop)
-            f.write("%s\n" % expire)
-            f.write("%s\n" % self.packet.encode('base64'))
-
     def _split_headers(self, headbytes):
         assert len(headbytes) % 1024 == 0
         b = len(headbytes)
@@ -309,20 +303,48 @@ class Message():
         b = len(ivs)
         return [ivs[i:i+16] for i in range(0, b, 16)]
 
-    def _debug(self, head):
-        print "KeyId: %s" % head[:16].encode('hex')
-        print "RSA Len: %s" % head[16:18].encode('hex')
-        print "RSA Data: %s" % head[18:60].encode('hex')
-        print "IV: %s" % head[530:546].encode('hex')
-        print "Digest: %s" % head[960:990].encode('hex')
+    def packet_write(self, next_hop, filename):
+        expire = timing.epoch_days() + config.getint('pool', 'expire')
+        with open(filename, 'w') as f:
+            f.write("Next Hop: %s\n" % next_hop)
+            f.write("Expire: %s\n\n" % expire)
+            f.write("-----BEGIN NEWMIX MESSAGE-----\n")
+            f.write("Version: %s\n\n" % config.get('general', 'version'))
+            f.write("%s" % self.packet.encode('base64'))
+            f.write("-----END NEWMIX MESSAGE-----\n")
+
+    def packet_read(self, text):
+        data = {}
+        packet_start = text.find('-----BEGIN NEWMIX MESSAGE-----') + 31
+        packet_end = text.find('\n-----END NEWMIX MESSAGE-----')
+        double_nl = text[packet_start:packet_end].find('\n\n')
+        base64_start = packet_start + double_nl + 2
+        for line in text[:packet_start].split('\n'):
+            if ': ' in line:
+                k, v  = self._colonspace(line)
+                data[k] = v
+        version = text[packet_start:packet_end].split("\n", 1)[0]
+        k, v = self._colonspace(version)
+        data[k] = v
+        data['packet'] = text[base64_start:packet_end].decode('base64')
+        if len(data['packet']) != 20480:
+            log.info("Discarding inbound packet due to incorrect packet size")
+            raise PacketError("Malformed inbound packet")
+        return data
+
+    def _colonspace(self, data):
+        key, value = data.split(': ', 1)
+        key = key.strip().lower().replace(' ', '_')
+        return key, value.strip()
 
 
 def new_msg():
+    pool = Pool.Pool()
     message = Message()
     test_rem = message.keystore.chain()
     chain = [test_rem, test_rem]
     plain_text = "This is a test message\n" * 10
-    message.encode(plain_text, chain)
+    message.encode(plain_text, chain, pool.outbound_filename())
 
 
 log = logging.getLogger("newmix.%s" % __name__)

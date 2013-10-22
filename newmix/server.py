@@ -44,7 +44,9 @@ class Server(Daemon):
         generator = pool.inbound_select()
         for filename in generator:
             with open(filename, 'r') as f:
-                m.decode(f.read().decode('base64'))
+                m.decode(f.read().decode('base64'),
+                         pool.outbound_filename())
+                m.packet_write(m.packet)
                 pool.inbound_delete(filename)
                 if m.is_exit:
                     print m.text
@@ -53,15 +55,16 @@ class Server(Daemon):
         generator = pool.outbound_select()
         for filename in generator:
             with open(filename, 'r') as f:
-                next_hop = f.readline().rstrip()
-                expire = f.readline().rstrip()
-                payload = {'newmix': f.read()}
-            if expire < timing.epoch_days():
-                log.warn("Giving up on sending msg to %s." % next_hop)
+                packet_data = m.packet_read(f.read())
+            if packet_data['expire'] < timing.epoch_days():
+                log.warn("Giving up on sending msg to %s.",
+                         packet_data['next_hop'])
                 pool.outbound_delete(filename)
                 continue
+            payload = {'newmix': packet_data['packet']}
             try:
-                r = requests.post('http://%s/cgi-bin/webcgi.py' % next_hop,
+                r = requests.post('http://%s/cgi-bin/webcgi.py'
+                                  % packet_data['next_hop'],
                                   data=payload)
                 if r.status_code == requests.codes.ok:
                     pool.outbound_delete(filename)
@@ -78,8 +81,8 @@ if (__name__ == "__main__"):
     log = logging.getLogger("newmix")
     log.setLevel(loglevels[config.get('logging', 'level')])
     filename = os.path.join(config.get('logging', 'path'), 'newmix.log')
-    #handler = logging.StreamHandler()
-    handler = logging.FileHandler(filename, mode='a')
+    handler = logging.StreamHandler()
+    #handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
 
@@ -94,3 +97,5 @@ if (__name__ == "__main__"):
             s.start()
         elif cmd == "--stop":
             s.stop()
+        elif cmd == "--run":
+            s.run()
