@@ -166,8 +166,9 @@ class Message():
         self.rsa_data_size = 512
         self.is_exit = False
         self.keystore = keys.Keystore()
+        self.out_pool = Pool.Pool(pooldir = config.get('pool', 'outdir'))
 
-    def encode(self, msg, chain, filename):
+    def encode(self, msg, chain):
         headers = []
         # next_hop is used to ascertain is this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -236,9 +237,9 @@ class Message():
         self.packet = (''.join(headers) +
                        Random.new().read((10 - len(headers)) * 1024) +
                        body)
-        self.packet_write(next_hop, filename)
+        self.packet_write(next_hop)
 
-    def decode(self, packet, outbound_filename):
+    def decode(self, packet):
         assert len(packet) == 20480
         self.is_exit = False
         # Split the header component into its 10 distinct headers.
@@ -278,7 +279,7 @@ class Message():
             self.packet = (''.join(headers) +
                            Random.new().read(1024) +
                            cipher.decrypt(packet[10240:20480]))
-            self.packet_write(inner.packet_info.next_hop, outbound_filename)
+            self.packet_write(inner.packet_info.next_hop)
             self.is_exit = False
 
         elif inner.pkt_type == "1":
@@ -303,9 +304,9 @@ class Message():
         b = len(ivs)
         return [ivs[i:i+16] for i in range(0, b, 16)]
 
-    def packet_write(self, next_hop, filename):
-        expire = timing.epoch_days() + config.getint('pool', 'expire')
-        with open(filename, 'w') as f:
+    def packet_write(self, next_hop):
+        expire = timing.epoch_days() + self.out_pool.expire
+        with open(self.out_pool.filename(), 'w') as f:
             f.write("Next Hop: %s\n" % next_hop)
             f.write("Expire: %s\n\n" % expire)
             f.write("-----BEGIN NEWMIX MESSAGE-----\n")
@@ -339,12 +340,11 @@ class Message():
 
 
 def new_msg():
-    pool = Pool.Pool()
     message = Message()
     test_rem = message.keystore.chain()
     chain = [test_rem, test_rem]
     plain_text = "This is a test message\n" * 10
-    message.encode(plain_text, chain, pool.outbound_filename())
+    message.encode(plain_text, chain)
 
 
 log = logging.getLogger("newmix.%s" % __name__)

@@ -47,9 +47,9 @@ config.set('logging', 'datefmt', '%Y-%m-%d %H:%M:%S')
 config.set('logging', 'retain', 7)
 
 config.add_section('pool')
-config.set('pool', 'inbound_pool', os.path.join(homedir, 'newmix',
+config.set('pool', 'indir', os.path.join(homedir, 'newmix',
            'inbound_pool'))
-config.set('pool', 'outbound_pool', os.path.join(homedir, 'newmix',
+config.set('pool', 'outdir', os.path.join(homedir, 'newmix',
            'outbound_pool'))
 config.set('pool', 'size', 45)
 config.set('pool', 'rate', 65)

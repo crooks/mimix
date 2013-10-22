@@ -35,41 +35,40 @@ from daemon import Daemon
 class Server(Daemon):
     def run(self):
         while True:
-            self.process_inbound()
-            if pool.outbound_trigger():
-                self.process_outbound()
+            process_inbound()
+            if out_pool.trigger():
+                process_outbound()
             timing.sleep(60)
 
-    def process_inbound(self):
-        generator = pool.inbound_select()
-        for filename in generator:
-            with open(filename, 'r') as f:
-                m.decode(f.read().decode('base64'),
-                         pool.outbound_filename())
-                m.packet_write(m.packet)
-                pool.inbound_delete(filename)
-                if m.is_exit:
-                    print m.text
+def process_inbound():
+    generator = in_pool.select_all()
+    for filename in generator:
+        with open(filename, 'r') as f:
+            m.decode(f.read().decode('base64'))
+            m.packet_write(m.packet)
+            in_pool.delete(filename)
+            if m.is_exit:
+                log.info("We got an exit message!!")
 
-    def process_outbound(self):
-        generator = pool.outbound_select()
-        for filename in generator:
-            with open(filename, 'r') as f:
-                packet_data = m.packet_read(f.read())
-            if packet_data['expire'] < timing.epoch_days():
-                log.warn("Giving up on sending msg to %s.",
-                         packet_data['next_hop'])
-                pool.outbound_delete(filename)
-                continue
-            payload = {'newmix': packet_data['packet']}
-            try:
-                r = requests.post('http://%s/cgi-bin/webcgi.py'
-                                  % packet_data['next_hop'],
-                                  data=payload)
-                if r.status_code == requests.codes.ok:
-                    pool.outbound_delete(filename)
-            except requests.exceptions.ConnectionError:
-                log.info("Unable to connect to %s", next_hop)
+def process_outbound():
+    generator = out_pool.select_subset()
+    for filename in generator:
+        with open(filename, 'r') as f:
+            packet_data = m.packet_read(f.read())
+        if packet_data['expire'] < timing.epoch_days():
+            log.warn("Giving up on sending msg to %s.",
+                     packet_data['next_hop'])
+            out_pool.delete(filename)
+            continue
+        payload = {'newmix': packet_data['packet']}
+        try:
+            r = requests.post('http://%s/cgi-bin/webcgi.py'
+                              % packet_data['next_hop'],
+                              data=payload)
+            if r.status_code == requests.codes.ok:
+                out_pool.delete(filename)
+        except requests.exceptions.ConnectionError:
+            log.info("Unable to connect to %s", next_hop)
 
 
 log = logging.getLogger("newmix.%s" % __name__)
@@ -87,7 +86,11 @@ if (__name__ == "__main__"):
     log.addHandler(handler)
 
     m = mix.Message()
-    pool = Pool.Pool()
+    in_pool = Pool.Pool(pooldir = config.get('pool', 'indir'))
+    out_pool = Pool.Pool(pooldir = config.get('pool', 'outdir'),
+                         interval = config.get('pool', 'interval'),
+                         rate = config.getint('pool', 'rate'),
+                         size = config.getint('pool', 'size'))
     s = Server(config.get('general', 'pidfile'),
                stderr='/home/crooks/newmix/log/err.log')
 
