@@ -32,7 +32,8 @@ import timing
 
 
 class Pool():
-    def __init__(self, pooldir, interval='1m', rate=100, size=1, expire=7):
+    def __init__(self, name, pooldir, interval='1m', rate=100, size=1,
+                 expire=7):
         self.trigger_time = timing.future(mins=1)
         assert type(interval) == StringType
         assert type(rate) == IntType
@@ -43,6 +44,7 @@ class Pool():
         self.rate = rate
         self.size = size
         self.expire = expire
+        self.log = logging.getLogger("newmix.%s" % name)
 
     def filename(self):
         """ Return a unique, fully-qualified, random filename within the pool
@@ -64,14 +66,17 @@ class Pool():
         """
         files = os.listdir(self.pooldir)
         numfiles = len(files)
-        log.debug("Pool contains %s messages", numfiles)
+        self.log.debug("Pool contains %s messages", numfiles)
         if numfiles < self.size:
             # The pool is too small to send messages.
-            log.info("Pool is insufficiently populated to trigger sending.")
+            self.log.debug("Pool is insufficiently populated to trigger "
+                          "sending.")
             files = []
             numfiles = 0
         process_num = (numfiles * self.rate) / 100
-        log.debug("Attempting to send %s messages from the pool.", process_num)
+        if process_num > 0:
+            self.log.debug("Attempting to send %s messages from the pool.",
+                           process_num)
         assert process_num <= numfiles
         # Shuffle the poolfiles into a random order
         Random.atfork()
@@ -90,8 +95,8 @@ class Pool():
         # Set the point in the future at which another outbound pool run will
         # occur.
         self.trigger_time = timing.dhms_future(self.interval)
-        log.debug("Next pool run: %s",
-                  timing.timestamp(self.trigger_time))
+        self.log.debug("Next pool run: %s",
+                       timing.timestamp(self.trigger_time))
 
     def delete(self, fqfn):
         """Delete files from the Mixmaster Pool."""
@@ -99,15 +104,15 @@ class Pool():
             head, tail = os.path.split(fqfn)
             assert head == self.pooldir
             os.remove(fqfn)
-            log.debug("%s: Deleted", tail)
+            self.log.debug("%s: Deleted", tail)
         else:
-            log.error("%s: File not found during msg deletion", fqfn)
+            self.log.error("%s: File not found during msg deletion", fqfn)
 
     def select_all(self):
         files = os.listdir(self.pooldir)
         numfiles = len(files)
         if numfiles > 0:
-            log.debug("Processing %s messages.", numfiles)
+            self.log.debug("Processing %s messages.", numfiles)
         for f in files:
             yield os.path.join(self.pooldir, f)
 
@@ -123,7 +128,7 @@ if (__name__ == "__main__"):
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    p = Pool(config.get('pool', 'outdir'))
+    p = Pool('testing', config.get('pool', 'outdir'))
     generator = p.select_subset()
     for f in generator:
         print f
