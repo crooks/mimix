@@ -44,8 +44,13 @@ def process_inbound():
     generator = in_pool.select_all()
     for filename in generator:
         with open(filename, 'r') as f:
-            m.decode(f.read().decode('base64'))
-            m.packet_write(m.packet)
+            try:
+                packet_data = m.packet_read(f.read())
+            except ValveError, e:
+                log.debug("Newmix packet read failed with: %s", e)
+                in_pool.delete(filename)
+                continue
+            m.decode(packet_data['binary'])
             in_pool.delete(filename)
             if m.is_exit:
                 log.info("We got an exit message!!")
@@ -54,7 +59,12 @@ def process_outbound():
     generator = out_pool.select_subset()
     for filename in generator:
         with open(filename, 'r') as f:
-            packet_data = m.packet_read(f.read())
+            try:
+                packet_data = m.packet_read(f.read())
+            except ValveError, e:
+                log.debug("Newmix packet read failed with: %s", e)
+                out_pool.delete(filename)
+                continue
         if packet_data['expire'] < timing.epoch_days():
             log.warn("Giving up on sending msg to %s.",
                      packet_data['next_hop'])
@@ -68,7 +78,7 @@ def process_outbound():
             if r.status_code == requests.codes.ok:
                 out_pool.delete(filename)
         except requests.exceptions.ConnectionError:
-            log.info("Unable to connect to %s", next_hop)
+            log.info("Unable to connect to %s", packet_data['next_hop'])
 
 
 log = logging.getLogger("newmix.%s" % __name__)
@@ -86,8 +96,10 @@ if (__name__ == "__main__"):
     log.addHandler(handler)
 
     m = mix.Message()
-    in_pool = Pool.Pool(pooldir = config.get('pool', 'indir'))
-    out_pool = Pool.Pool(pooldir = config.get('pool', 'outdir'),
+    in_pool = Pool.Pool(name = 'inpool',
+                        pooldir = config.get('pool', 'indir'))
+    out_pool = Pool.Pool(name = 'outpool',
+                         pooldir = config.get('pool', 'outdir'),
                          interval = config.get('pool', 'interval'),
                          rate = config.getint('pool', 'rate'),
                          size = config.getint('pool', 'size'))
