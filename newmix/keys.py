@@ -241,7 +241,8 @@ class Keystore(object):
             address = address[7:]
         # If the address is unknown, steps are taken to find out about it.
         if address in self.known_addresses:
-            log.debug("Not fetching %s, it's already known.", address)
+            log.debug("Not fetching remailer-conf for %s, it's already "
+                      "known.", address)
             return 0
         # Has there already been an attempt to retreive this address
         # today?
