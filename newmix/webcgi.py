@@ -33,12 +33,11 @@ form = cgi.FieldStorage()
 content = form.getvalue('newmix')
 if content is None:
     sys.exit(0)
-content_len = len(content)
-if content_len > 27000 and content_len < 30000:
-    fn = os.path.join('/home/crooks/newmix/msgstore',
+if '-----BEGIN NEWMIX MESSAGE-----' in content:
+    fn = os.path.join('/home/crooks/newmix/inbound_pool',
                      'm' + Random.new().read(4).encode('hex'))
     while os.path.isfile(fn):
-        fn = os.path.join(config.get('pool', 'path'),
+        fn = os.path.join('/home/crooks/newmix/inbound_pool',
                           'm' + Random.new().read(4).encode('hex'))
     with open(fn, 'w') as f:
         f.write(content)
