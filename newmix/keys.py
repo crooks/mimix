@@ -29,6 +29,8 @@ import sqlite3
 import sys
 import logging
 import http
+from Crypto import Random
+from Crypto.Random import random
 
 class KeyImportError(Exception):
     pass
@@ -51,12 +53,27 @@ class Keystore(object):
         self.daily_events(force=True)
 
     def create_keyring(self):
+        """
+        Database Structure
+        [ keyid         Text                               Hex Keyid ]
+        [ name          Text                      Friendly Shortname ]
+        [ address       Text            Address (and port if not 80) ]
+        [ pubkey        Text                        Public Key (PEM) ]
+        [ seckey        Text                        Secret Key (PEM) ]
+        [ validfr       Text (Date)                  Valid From Date ]
+        [ validto       Text (Date)                    Valid To Date ]
+        [ advertise     Int  (Bool)               Advertise (Yes/No) ]
+        [ smtp          Int  (Bool)               SMTP Exit (Yes/No) ]
+        [ uptime        Int  (%)                  Uptime Reliability ]
+        [ latency       Int  (Mins)                          Latency ]
+        """
         log.info('Creating DB table "keyring"')
         self.cur.execute('''CREATE TABLE keyring
                             (keyid text, name text, address text,
                              pubkey text, seckey text,
                              validfr text, validto text, advertise int,
-                             smtp int, UNIQUE (keyid))''')
+                             smtp int, uptime int, latency int,
+                             UNIQUE (keyid))''')
         self.conn.commit()
 
     def generate(self):
@@ -74,35 +91,40 @@ class Keystore(object):
                   timing.today(),
                   timing.datestamp(timing.future(days=270)),
                   1,
-                  config.getboolean('general', 'smtp'))
+                  config.getboolean('general', 'smtp'),
+                  100,
+                  0)
         self.cur.execute('''INSERT INTO keyring (keyid, name, address,
                                                  pubkey, seckey, validfr,
-                                                 validto, advertise, smtp)
-                            VALUES (?,?,?,?,?,?,?,?,?)''', insert)
+                                                 validto, advertise, smtp,
+                                                 uptime, latency)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?)''', insert)
         self.conn.commit()
         #self.test_load()
         return str(keyid)
 
     def test_load(self):
-        seckey = RSA.generate(1024)
-        pubkey = seckey.publickey()
-        pubpem = pubkey.exportKey(format='PEM')
-        keyid = hashlib.md5(pubpem).hexdigest()
-        insert = (keyid,
-                  'tester',
-                  'www.mixmin.net',
-                  pubpem,
-                  seckey.exportKey(format='PEM'),
-                  timing.today(),
-                  timing.datestamp(timing.future(days=270)),
-                  1,
-                  0)
-        self.cur.execute('''INSERT INTO keyring (keyid, name, address,
-                                                 pubkey, seckey, validfr,
-                                                 validto, advertise, smtp)
-                            VALUES (?,?,?,?,?,?,?,?,?)''', insert)
+        for n in range(0,20):
+            seckey = RSA.generate(1024)
+            pubkey = seckey.publickey()
+            pubpem = pubkey.exportKey(format='PEM')
+            keyid = hashlib.md5(pubpem).hexdigest()
+            insert = (keyid,
+                      'test_%s' % n,
+                      'www.mixmin.net',
+                      pubpem,
+                      timing.today(),
+                      timing.datestamp(timing.future(days=270)),
+                      1,
+                      0,
+                      random.randint(0, 100),
+                      random.randint(2, 10080))
+            self.cur.execute('''INSERT INTO keyring (keyid, name, address,
+                                                     pubkey, validfr,
+                                                     validto, advertise, smtp,
+                                                     uptime, latency)
+                                VALUES (?,?,?,?,?,?,?,?,?,?)''', insert)
         self.conn.commit()
-        self.test_keyid = keyid
 
     def key_to_advertise(self):
         loop_count = 0
@@ -320,13 +342,19 @@ class Keystore(object):
     def chain(self):
         return self.known_addresses[0]
 
-        
-
 log = logging.getLogger("newmix.%s" % __name__)
 if (__name__ == "__main__"):
-    log = logging.getLogger("Pymaster")
-    log.setLevel(logging.DEBUG)
+    logfmt = config.get('logging', 'format')
+    datefmt = config.get('logging', 'datefmt')
+    loglevels = {'debug': logging.DEBUG, 'info': logging.INFO,
+                 'warn': logging.WARN, 'error': logging.ERROR}
+    log = logging.getLogger("newmix")
+    log.setLevel(loglevels[config.get('logging', 'level')])
+    filename = os.path.join(config.get('logging', 'path'), 'newmix.log')
     handler = logging.StreamHandler()
+    #handler = logging.FileHandler(filename, mode='a')
+    handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     ks = Keystore()
+    #ks.test_load()
     #ks.conf_fetch("www.mixmin.net")

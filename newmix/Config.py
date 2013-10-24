@@ -38,6 +38,12 @@ config.set('general', 'smtp', 'no')
 config.set('general', 'pidfile', os.path.join(homedir, 'newmix', 'newmix.pid'))
 config.set('general', 'version', '0.1-alpha1')
 
+config.add_section('chain')
+config.set('chain', 'chain', "*,*,*")
+config.set('chain', 'uptime', 90)
+config.set('chain', 'maxlat', 120)
+config.set('chain', 'minlat', 0)
+
 config.add_section('logging')
 config.set('logging', 'path', os.path.join(homedir, 'newmix', 'log'))
 config.set('logging', 'level', 'info')
