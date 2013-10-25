@@ -104,19 +104,19 @@ class Keystore(object):
         return str(keyid)
 
     def test_load(self):
-        for n in range(0,20):
+        for n in range(20,25):
             seckey = RSA.generate(1024)
             pubkey = seckey.publickey()
             pubpem = pubkey.exportKey(format='PEM')
             keyid = hashlib.md5(pubpem).hexdigest()
             insert = (keyid,
-                      'test_%s' % n,
-                      'www.mixmin.net',
+                      'exit_%s' % n,
+                      'exit_%s.com' % n,
                       pubpem,
                       timing.today(),
                       timing.datestamp(timing.future(days=270)),
                       1,
-                      0,
+                      1,
                       random.randint(0, 100),
                       random.randint(2, 10080))
             self.cur.execute('''INSERT INTO keyring (keyid, name, address,
@@ -356,5 +356,5 @@ if (__name__ == "__main__"):
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     ks = Keystore()
-    #ks.test_load()
+    ks.test_load()
     #ks.conf_fetch("www.mixmin.net")

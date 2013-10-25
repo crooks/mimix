@@ -164,4 +164,4 @@ if (__name__ == "__main__"):
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     chain = Chain()
-    print chain.create(chainstr='*,*,test_24,*,*,*')
+    print chain.create(chainstr='*,*,test_15,*,*')
