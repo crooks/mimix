@@ -43,6 +43,7 @@ config.set('chain', 'chain', "*,*,*")
 config.set('chain', 'uptime', 90)
 config.set('chain', 'maxlat', 120)
 config.set('chain', 'minlat', 0)
+config.set('chain', 'distance', 3)
 
 config.add_section('logging')
 config.set('logging', 'path', os.path.join(homedir, 'newmix', 'log'))
