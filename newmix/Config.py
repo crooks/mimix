@@ -36,6 +36,8 @@ config.set('general', 'address', 'nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
 config.set('general', 'pidfile', os.path.join(homedir, 'newmix', 'newmix.pid'))
+config.set('general', 'dbfile', os.path.join(homedir, 'newmix',
+                                             'directory.db'))
 config.set('general', 'version', '0.1-alpha1')
 
 config.add_section('chain')

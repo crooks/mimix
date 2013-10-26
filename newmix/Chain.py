@@ -40,7 +40,7 @@ class Chain(object):
     """
     """
     def __init__(self):
-        filename = "directory.db"
+        filename = config.get('general', 'dbfile')
         log.debug("Opening database: %s", filename)
         self.conn = sqlite3.connect(filename)
         self.conn.text_factory = str
