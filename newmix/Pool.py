@@ -50,11 +50,11 @@ class Pool():
         """ Return a unique, fully-qualified, random filename within the pool
             folder.
         """
-        fn = os.path.join(self.pooldir,
-                          'm' + Random.new().read(4).encode('hex'))
-        while os.path.isfile(fn):
+        while True:
             fn = os.path.join(pooldir,
                               'm' + Random.new().read(4).encode('hex'))
+            if not os.path.isfile(fn):
+                break
         return fn
 
     def trigger(self):

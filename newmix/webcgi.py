@@ -34,10 +34,10 @@ content = form.getvalue('newmix')
 if content is None:
     sys.exit(0)
 if '-----BEGIN NEWMIX MESSAGE-----' in content:
-    fn = os.path.join('/home/crooks/newmix/inbound_pool',
-                     'm' + Random.new().read(4).encode('hex'))
-    while os.path.isfile(fn):
-        fn = os.path.join('/home/crooks/newmix/inbound_pool',
-                          'm' + Random.new().read(4).encode('hex'))
+        while True:
+            fn = os.path.join('/home/crooks/newmix/inbound_pool',
+                              'm' + Random.new().read(4).encode('hex'))
+            if not os.path.isfile(fn):
+                break
     with open(fn, 'w') as f:
         f.write(content)
