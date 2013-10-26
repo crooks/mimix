@@ -25,6 +25,7 @@ import timing
 import hashlib
 import logging
 import Pool
+import Chain
 import sys
 from Config import config
 from Crypto.Cipher import AES
@@ -180,17 +181,16 @@ class Message():
         # 2) Existing headers are encrypted using keys from Step.1.
         # 3) The payload is encrypted using keys from Step.1.
         for h in range(len(chain)):
-            this_hop = chain.pop()
-            keyid, public_key = self.keystore.get_public(this_hop)
-            if public_key is None:
-                raise PacketError("Unknown recipient public key")
+            this_hop_name = chain.pop()
+            # get_pubkey() returns a Tuple of (keyid, address, pubkey)
+            rem_info = self.keystore.get_public(this_hop_name)
             # This is the AES key that will be RSA Encrypted.  It's used to
             # encrypt the 384 Byte inner header part.
             aes = Random.new().read(32)
             iv = Random.new().read(16)
             inner = Inner()
             inner.encode(next_hop)
-            cipher = PKCS1_OAEP.new(public_key)
+            cipher = PKCS1_OAEP.new(rem_info[2])
             rsa_data = cipher.encrypt(aes)
             len_rsa = len(rsa_data)
             # The RSA data size is dependent on the RSA key size.  The packet
@@ -200,7 +200,7 @@ class Message():
             rsa_data += Random.new().read(self.rsa_data_size - len_rsa)
             cipher = AES.new(aes, AES.MODE_CFB, iv)
             newhead = struct.pack('<16sH512s16s384s30s',
-                                  keyid.decode('hex'),
+                                  rem_info[0].decode('hex'),
                                   len_rsa,
                                   rsa_data,
                                   iv,
@@ -231,8 +231,7 @@ class Message():
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
                 body = cipher.encrypt(body)
             headers.insert(0, newhead)
-            #TODO next_hop needs to be an address, not a keyid
-            next_hop = this_hop
+            next_hop = rem_info[1]
         # The final step of encoding is to merge the headers (along with fake
         # headers for padding) with the body.
         self.packet = (''.join(headers) +
@@ -350,11 +349,13 @@ class Message():
 
 
 def new_msg():
+    chain = Chain.Chain()
     message = Message()
     test_rem = message.keystore.chain()
-    chain = [test_rem, test_rem]
+    c = chain.create()
+    print c
     plain_text = "This is a test message\n" * 10
-    message.encode(plain_text, chain)
+    message.encode(plain_text, c)
 
 
 log = logging.getLogger("newmix.%s" % __name__)
