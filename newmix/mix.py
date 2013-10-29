@@ -25,7 +25,6 @@ import timing
 import hashlib
 import logging
 import Pool
-import Chain
 import sys
 from Config import config
 from Crypto.Cipher import AES
@@ -349,9 +348,8 @@ class Message():
 
 
 def new_msg():
-    chain = Chain.Chain()
+    chain = keys.Chain()
     message = Message()
-    test_rem = message.keystore.chain()
     c = chain.create()
     print c
     plain_text = "This is a test message\n" * 10

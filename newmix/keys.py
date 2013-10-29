@@ -29,13 +29,47 @@ import sqlite3
 import sys
 import logging
 import http
-from Crypto import Random
 from Crypto.Random import random
 
 class KeyImportError(Exception):
     pass
 
-class Keystore(object):
+class ChainError(Exception):
+    pass
+
+class DBGeneric(object):
+    def count(self):
+        exe("SELECT COUNT(name) FROM keyring WHERE advertise")
+        return cur.fetchone()[0]
+
+    def all_remailers_by_name(self, smtp=False):
+        """
+        Return a list of all known remailers (with public keys).
+        If smtp is True, only exit-type remailers will be included.
+        """
+        insert = (smtp,)
+        exe("""SELECT name FROM keyring
+               WHERE pubkey IS NOT NULL AND (smtp or smtp=?)
+               AND advertise""", insert)
+        data =  cur.fetchall()
+        column = 0
+        return [e[column] for e in data]
+
+    def all_remailers_by_address(self, smtp=False):
+        """
+        Return a list of all known remailers (with public keys).
+        If smtp is True, only exit-type remailers will be included.
+        """
+        insert = (smtp,)
+        exe("""SELECT address FROM keyring
+               WHERE pubkey IS NOT NULL AND (smtp or smtp=?)
+               AND advertise""", insert)
+        data =  cur.fetchall()
+        column = 0
+        return [e[column] for e in data]
+
+
+class Keystore(DBGeneric):
     """
     """
     def __init__(self):
@@ -158,7 +192,6 @@ class Keystore(object):
         # If any seckeys expired, it's likely a new key will be needed.  Check
         # what key should be advertised and advertise it.
         self.key_to_advertise()
-        self.advertise()
 
         self.sec_cache = {}
 
@@ -166,9 +199,7 @@ class Keystore(object):
         # time this remailer functions as an Intermediate Hop.  The message
         # contains the address of the next_hop and this list confirms that
         # is a known remailer.
-        exe('SELECT address FROM keyring WHERE advertise')
-        data = cur.fetchall()
-        self.known_addresses = [c[0] for c in data]
+        self.known_addresses = self.all_remailers_by_address()
         # Reset the fetch cache.  This cache prevents repeated http GET
         # requests being sent to dead or never there remailers.
         self.fetch_cache = []
@@ -309,8 +340,96 @@ class Keystore(object):
         return keys['keyid'], keys['pubkey']
 
 
-    def chain(self):
-        return self.known_addresses[0]
+class Chain(DBGeneric):
+    """
+    """
+    def contenders(self, uptime=config.getint('chain', 'uptime'),
+                         maxlat=config.getint('chain', 'maxlat'),
+                         minlat=config.getint('chain', 'minlat'),
+                         smtp=False):
+        """
+        Find all the known Remailers that meet the selection criteria of
+        Uptime, Maximum Latency and Minimum Latency.  An additional criteria
+        of SMTP-only nodes can also be stipulated.  Only the remailer address
+        is returned as the valid key is cross-referenced during message
+        compilation.
+        """
+        insert = (uptime, maxlat, minlat, smtp)
+        exe("""SELECT name FROM keyring
+               WHERE uptime>=? AND latency<=? AND latency>=? AND
+               pubkey IS NOT NULL AND (smtp or smtp=?)""", insert)
+        data =  cur.fetchall()
+        column = 0
+        return [e[column] for e in data]
+
+    def create(self, chainstr=config.get('chain', 'chain')):
+        """
+        This function returns a remailer chain.  The first link in the chain
+        being the entry-remailer and the last link, the exit-remailer.  As the
+        exit node must meet specific criteria, it is selected first to ensure
+        the availability of suiable exit-nodes isn't exhausted during chain
+        creation (see 'distance' parameter).  From that point, the chain is
+        constructed in reverse.
+        """
+        distance = config.get('chain', 'distance')
+        # nodes is a list of each link in the chain.  Each link can either be
+        # randomly selected (Depicted by an '*' or hardcoded (by remailer
+        # address).
+        nodes = [n.strip() for n in chainstr.split(',')]
+        exits = self.contenders(uptime=70, maxlat=2880, smtp=True)
+        # contenders is a list of exit remailers that don't conflict with any
+        # hardcoded remailers within the proximity of "distance".  Without
+        # this check, the exit remailer would be selected prior to
+        # consideration of distance compliance.
+        contenders = list(set(exits).difference(nodes[0 - distance:]))
+        if len(contenders) == 0:
+            raise ChainError("No exit remailers meet selection criteria")
+        exit = nodes.pop()
+        if exit == "*":
+            exit = contenders[random.randint(0, len(exits) - 1)]
+        elif exit not in exits:
+            log.error("%s: Invalid hardcoded exit remailer", exit)
+            raise ChainError("Invalid exit node")
+        chain = [exit]
+        # If the requested chain only contained a single remailer, bail out
+        # at this point and save some cycles.
+        if not nodes:
+            return chain
+        # distance_exclude is a list of the remailers in close proximity to
+        # the node currently being selected.  It prevents a single remailer
+        # from occupying two overly-proximate links.
+        distance_exclude = [exit]
+        # All remailers is used to check that hardcoded links are all known
+        # remailers.
+        all_remailers = self.all_remailers_by_name()
+        remailers = self.contenders(uptime=50, maxlat=2880)
+        # If processing reaches this point, at least one remailer (besides an
+        # exit) is required.  If we have none to choose from, raise an error.
+        if len(remailers) == 0:
+            raise ChainError("Insufficient remailers meet selection criteria")
+        # Loop until all the links have been popped off the nodes stack.
+        while nodes:
+            if len(distance_exclude) >= distance:
+                distance_exclude.pop(0)
+            remailer = nodes.pop()
+            if remailer == "*":
+                # During random selection, only nodes in the remailers list
+                # and not in the distance list can be considered.
+                contenders = list(set(remailers).difference(distance_exclude))
+                num_contenders = len(contenders)
+                if num_contenders == 0:
+                    raise ChainError("Insufficient remailers to comply with "
+                                     "distance criteria")
+                # Pick a random remailer from the list of potential contenders
+                remailer = contenders[random.randint(0, num_contenders - 1)]
+            elif remailer not in all_remailers:
+                log.error("%s: Invalid hardcoded remailer", remailer)
+                raise ChainError("Invalid remailer")
+            # The newly selected remailer becomes the first link in chain.
+            chain.insert(0, remailer)
+            distance_exclude.append(remailer)
+        return chain
+
 
 con = sqlite3.connect(config.get('general', 'dbfile'))
 con.text_factory = str
@@ -330,5 +449,7 @@ if (__name__ == "__main__"):
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     ks = Keystore()
-    ks.test_load()
+    #ks.test_load()
     #ks.conf_fetch("www.mixmin.net")
+    chain = Chain()
+    print chain.create()

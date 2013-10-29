@@ -23,20 +23,23 @@
 import argparse
 import mix
 import sys
+import keys
 
 m = mix.Message()
+chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Newmix Client')
 parser.add_argument('--file', type=str, dest='filename')
 parser.add_argument('--stdout', dest='stdout', action='store_true')
 args = parser.parse_args()
 #TODO Proper chain handling
-chain = ['no.onion','no.onion']
+c = chain.create()
+sys.stdout.write('Chain is %s\n' % c)
 if args.filename:
     with open(args.filename, 'r') as f:
-        m.encode(f.read(), chain)
+        m.encode(f.read(), c)
 else:
     sys.stdout.write("Type message here.  Finish with Ctrl-D.\n")
-    m.encode(sys.stdin.read(), chain)
+    m.encode(sys.stdin.read(), c)
 
 if args.stdout:
     sys.stdout.write(m.packet)
