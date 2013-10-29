@@ -1,4 +1,4 @@
-The following command will install the nymserv program:-
+The following command will install the newmix program:-
 
 	python setup.py install
 
@@ -6,20 +6,13 @@ This will need to be run by a user with write permissions to the Python
 dist-packages directory. In most cases this will be root.  See the MANIFEST
 file for a list of the files that will be installed.
 
-Before using the Nymserver you'll need to generate it a PGP keypair.
+PREREQUISITES
+In order to run Newmix, you will need to install the following modules:
+mod-python	http://modpython.org/
+pycrypto	https://www.dlitz.net/software/pycrypto/
+requests	http://www.python-requests.org/en/latest/
 
-Run the command:
-gpg --homedir <your keyring path> --gen-key
-Then follow the instructions to create the config@<nym_domain> account.
-Note: <your_keyring_path> should match the .nymservrc keyring setting.
-
-The key will then have to be edited to add uids for send@<nym_domain> and
-url@<nym_domain>.  See http://www.gnupg.org/gph/en/manual.html#AEN282 for
-further details on this step.
-
-Next, try starting nymserv with the --process option.  Although you have no
-incoming mail for it at this point, it will create the directory structure and
-check you have no errors.  If this goes well, configure your MTA to deliver
-messages to the server and start it in Daemon mode.
-
-That's it, you're done!
+On a Debian platform, these can be installed as follows:
+apt-get install libapache2-mod-python
+apt-get install python-crypto
+apt-get install python-requests

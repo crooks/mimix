@@ -103,18 +103,21 @@ def process_outbound():
             #TODO Statistically mark down this remailer.
             out_pool.delete(filename)
             continue
-        payload = {'newmix': packet_data['packet']}
+        payload = {'base64': packet_data['packet']}
         try:
             # Actually try to send the message to the next_hop.  There are
             # probably a lot of failure conditions to handle at this point.
-            r = requests.post('http://%s/cgi-bin/webcgi.py'
-                              % packet_data['next_hop'],
-                              data=payload)
+            recipient = 'http://%s/collector.py/msg' % packet_data['next_hop']
+            r = requests.post(recipient, data=payload)
             if r.status_code == requests.codes.ok:
                 out_pool.delete(filename)
+            else:
+                log.info("Delivery to %s failed with status code: %s.  "
+                         "Will keep trying to deliver it.",
+                         recipient, r.status_code)
         except requests.exceptions.ConnectionError:
             #TODO Mark down remailer statistics.
-            log.info("Unable to connect to %s", packet_data['next_hop'])
+            log.info("Unable to connect to %s.  Will keep trying.", recipient)
 
 
 log = logging.getLogger("newmix.%s" % __name__)

@@ -96,25 +96,26 @@ class Keystore(object):
         return str(keyid)
 
     def test_load(self):
-        for n in range(20,25):
+        for n in range(0,10):
             seckey = RSA.generate(1024)
             pubkey = seckey.publickey()
             pubpem = pubkey.exportKey(format='PEM')
             keyid = hashlib.md5(pubpem).hexdigest()
             insert = (keyid,
                       'exit_%s' % n,
-                      'exit_%s.com' % n,
+                      'www.mixmin.net/newmix',
+                      seckey.exportKey(format='PEM'),
                       pubpem,
                       timing.today(),
                       timing.datestamp(timing.future(days=270)),
                       1,
                       1,
-                      random.randint(0, 100),
-                      random.randint(2, 10080))
-            exe('''INSERT INTO keyring (keyid, name, address, pubkey, validfr,
-                                        validto, advertise, smtp, uptime,
-                                        latency)
-                               VALUES (?,?,?,?,?,?,?,?,?,?)''', insert)
+                      100,
+                      random.randint(2, 120))
+            exe('''INSERT INTO keyring (keyid, name, address, seckey, pubkey,
+                                        validfr, validto, advertise, smtp,
+                                        uptime, latency)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?)''', insert)
         con.commit()
 
     def key_to_advertise(self):
@@ -219,7 +220,7 @@ class Keystore(object):
         f.write("\n%s\n\n" % pub)
         criteria = (self.mykey[0],)
         # Only the addresses of known remailers is advertised.  It's up to the
-        # third party to gether further details directly from the source.
+        # third party to gather further details directly from the source.
         exe('''SELECT address FROM keyring
                WHERE keyid != ? AND advertise''', criteria)
         data = cur.fetchall()
@@ -329,5 +330,5 @@ if (__name__ == "__main__"):
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     ks = Keystore()
-    #ks.test_load()
+    ks.test_load()
     #ks.conf_fetch("www.mixmin.net")

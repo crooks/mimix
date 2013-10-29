@@ -65,10 +65,6 @@ config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')
 config.set('pool', 'expire', 7)
 
-config.add_section('http')
-config.set('http', 'path', os.path.join(homedir, 'newmix', 'http'))
-config.set('http', 'cgipath', os.path.join(homedir, 'newmix', 'cgi-bin'))
-
 # Try and process the .newmixrc file.  If it doesn't exist, we
 # bailout as some options are compulsory.
 if 'NEWMIX' in os.environ:
@@ -83,4 +79,11 @@ else:
                      "location is %s.  This can be overridden by defining "
                      "the NEWMIX environment variable.\n" % configfile)
     sys.exit(1)
+
+if config.get('general', 'address').endswith('/'):
+    config.set('general', 'address', config.get('general',
+                                                'address').rstrip('/'))
+if config.get('general', 'address').startswith('http://'):
+    config.set('general', 'address', config.get('general',
+                                                'address')[7:])
 

@@ -51,7 +51,7 @@ class Pool():
             folder.
         """
         while True:
-            fn = os.path.join(pooldir,
+            fn = os.path.join(self.pooldir,
                               'm' + Random.new().read(4).encode('hex'))
             if not os.path.isfile(fn):
                 break
