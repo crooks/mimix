@@ -60,7 +60,7 @@ def process_inbound():
         with open(filename, 'r') as f:
             try:
                 packet_data = m.packet_read(f.read())
-            except ValveError, e:
+            except ValueError, e:
                 # ValueError is returned when the packet being processed isn't
                 # compliant with the specification.  These messages are
                 # deleted without further consideration.

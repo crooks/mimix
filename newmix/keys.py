@@ -103,7 +103,7 @@ class Keystore(object):
             keyid = hashlib.md5(pubpem).hexdigest()
             insert = (keyid,
                       'exit_%s' % n,
-                      'www.mixmin.net/newmix',
+                      'www.mixmin.net:8080',
                       seckey.exportKey(format='PEM'),
                       pubpem,
                       timing.today(),

@@ -20,7 +20,7 @@
 # this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
-import os
+import os.path
 from Crypto import Random
 
 def msg(req, base64):
@@ -34,5 +34,6 @@ def msg(req, base64):
                 break
         with open(fn, 'w') as f:
             f.write(base64)
+        return "Newmix message submitted";
     else:
         return "Invalid submission\n";
