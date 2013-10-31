@@ -37,12 +37,32 @@ class PacketError(Exception):
     pass
 
 
-class PacketInfo(object):
+class Intermediate(object):
     """
     Packet type 0 (intermediate hop):
     [ 9 Initialization vectors   144 bytes ]
     [ Next address               112 bytes ]
+    """
+    def new(self):
+        self.packet_type = "0"
+        self.ivs = Random.new().read(9 * 16)
 
+    def nexthop(self, address):
+        self.next_hop = address
+        self.next_hop_padded = address + ('\x00' * (112 - len(address)))
+
+    def packetize(self):
+        assert len(self.ivs) == 144
+        assert len(self.next_hop_padded) == 112
+        return self.ivs + self.next_hop_padded
+
+    def decode(self, packet):
+        self.ivs = packet[:144]
+        self.next_hop = packet[144:144 + 112].rstrip('\x00')
+        
+
+class Exit(object):
+    """
     Packet type 1 (final hop):
     [ Chunk number                 1 byte  ]
     [ Number of chunks             1 byte  ]
@@ -50,35 +70,29 @@ class PacketInfo(object):
     [ Initialization vector       16 bytes ]
     [ Padding                    222 bytes ]
     """
+    def new(self):
+        self.packet_type = "1"
+        self.chunknum = 1
+        self.numchunks = 1
+        self.messageid = Random.new().read(16)
+        self.iv = Random.new().read(16)
 
-    def encode_intermediate(self, next_hop):
-        ivs = Random.new().read(9 * 16)
-        next_hop_padded = next_hop + ('\x00' * (112 - len(next_hop)))
-        self.ivs = ivs
-        self.next_hop = next_hop
-        packet = ivs + next_hop_padded
-        assert len(packet) == 256
-        self.packet = packet
-
-    def decode_intermediate(self, packet):
-        self.ivs = packet[:144]
-        self.next_hop = packet[144:144 + 112].rstrip('\x00')
-
-    def encode_exit(self, chunknum=1, numchunks=1):
+    def chunks(self, chunknum, numchunks):
         assert chunknum <= numchunks
-        messageid = Random.new().read(16)
-        iv = Random.new().read(16)
+        self.chunknum = chunknum
+        self.numchunks = numchunks
+
+    def packetize(self):
         packet = struct.pack('<BB16s16s222s',
-                             chunknum,
-                             numchunks,
-                             messageid,
-                             iv,
+                             self.chunknum,
+                             self.numchunks,
+                             self.messageid,
+                             self.iv,
                              Random.new().read(222))
         assert len(packet) == 256
-        self.iv = iv
-        self.packet = packet
-
-    def decode_exit(self, packet):
+        return packet
+        
+    def decode(self, packet):
         assert len(packet) == 256
         (self.chunknum,
          self.numchunks,
@@ -97,33 +111,35 @@ class Inner(object):
     [ Message digest                       64 bytes ]
     """
 
-    def encode(self, next_hop):
-        packet_id = Random.new().read(16)
+    def new(self, next_hop):
+        self.packet_id = Random.new().read(16)
         # This AES key is used to encrypt the other header sections and the
         # Message Payload.
-        aes = Random.new().read(32)
-        packet_info = PacketInfo()
+        self.aes = Random.new().read(32)
         if next_hop is None:
-            packet_info.encode_exit()
-            pkt_type = "1"
+            packet_info = Exit()
+            packet_info.new()
+            self.packet_info = packet_info
         else:
-            packet_info.encode_intermediate(next_hop)
-            pkt_type = "0"
+            packet_info = Intermediate()
+            packet_info.new()
+            packet_info.nexthop(next_hop)
+            self.packet_info = packet_info
         # Days since Epoch
-        timestamp = timing.epoch_days()
+        self.timestamp = timing.epoch_days()
+
+    def packetize(self):
         packet = struct.pack('<16s32sc256sH13s',
-                             packet_id,
-                             aes,
-                             pkt_type,
-                             packet_info.packet,
-                             timestamp,
+                             self.packet_id,
+                             self.aes,
+                             self.packet_info.packet_type,
+                             self.packet_info.packetize(),
+                             self.timestamp,
                              Random.new().read(13))
         digest = hashlib.sha512(packet).digest()
         packet += digest
         assert len(packet) == 384
-        self.aes = aes
-        self.packet_info = packet_info
-        self.packet = packet
+        return packet
 
     def decode(self, packet):
         assert len(packet) == 384
@@ -131,12 +147,13 @@ class Inner(object):
          digest) = struct.unpack('<16s32sc256sH13s64s', packet)
         if digest != hashlib.sha512(packet[:320]).digest():
             raise PacketError("Digest mismatch on encrypted header")
-        packet_info = PacketInfo()
         self.aes = aes
         if pkt_type == "0":
-            packet_info.decode_intermediate(pi)
+            packet_info = Intermediate()
+            packet_info.decode(pi)
         elif pkt_type == "1":
-            packet_info.decode_exit(pi)
+            packet_info = Exit()
+            packet_info.decode(pi)
         else:
             raise PacketError("Unknown packet type (%s)" % pkt_type)
         self.pkt_type = pkt_type
@@ -180,33 +197,8 @@ class Message():
         # 2) Existing headers are encrypted using keys from Step.1.
         # 3) The payload is encrypted using keys from Step.1.
         for h in range(len(chain)):
-            this_hop_name = chain.pop()
-            # get_pubkey() returns a Tuple of (keyid, address, pubkey)
-            rem_info = self.keystore.get_public(this_hop_name)
-            # This is the AES key that will be RSA Encrypted.  It's used to
-            # encrypt the 384 Byte inner header part.
-            aes = Random.new().read(32)
-            iv = Random.new().read(16)
             inner = Inner()
-            inner.encode(next_hop)
-            cipher = PKCS1_OAEP.new(rem_info[2])
-            rsa_data = cipher.encrypt(aes)
-            len_rsa = len(rsa_data)
-            # The RSA data size is dependent on the RSA key size.  The packet
-            # format can accommodate 512 Bytes which results from a 4096 bit
-            # keysize being used to encrypt the 32 Byte AES key.
-            assert len_rsa <= 512
-            rsa_data += Random.new().read(self.rsa_data_size - len_rsa)
-            cipher = AES.new(aes, AES.MODE_CFB, iv)
-            newhead = struct.pack('<16sH512s16s384s30s',
-                                  rem_info[0].decode('hex'),
-                                  len_rsa,
-                                  rsa_data,
-                                  iv,
-                                  cipher.encrypt(inner.packet),
-                                  Random.new().read(30))
-            digest = hashlib.sha512(newhead).digest()
-            newhead += digest
+            inner.new(next_hop)
             # If next_hop is None, this is an Exit message.  This is only True
             # during the first iteration, after which next_hop contains the
             # address of the next hop.
@@ -229,6 +221,34 @@ class Message():
                     headers[e] = cipher.encrypt(headers[e])
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
                 body = cipher.encrypt(body)
+
+            # That's it for old header and payload encoding.  The following
+            # section handles the header for this specific step.
+            this_hop_name = chain.pop()
+            # This is the AES key that will be RSA Encrypted.  It's used to
+            # encrypt the 384 Byte inner header part.
+            aes = Random.new().read(32)
+            iv = Random.new().read(16)
+            # get_pubkey() returns a Tuple of (keyid, address, pubkey)
+            rem_info = self.keystore.get_public(this_hop_name)
+            cipher = PKCS1_OAEP.new(rem_info[2])
+            rsa_data = cipher.encrypt(aes)
+            len_rsa = len(rsa_data)
+            # The RSA data size is dependent on the RSA key size.  The packet
+            # format can accommodate 512 Bytes which results from a 4096 bit
+            # keysize being used to encrypt the 32 Byte AES key.
+            assert len_rsa <= 512
+            rsa_data += Random.new().read(self.rsa_data_size - len_rsa)
+            cipher = AES.new(aes, AES.MODE_CFB, iv)
+            newhead = struct.pack('<16sH512s16s384s30s',
+                                  rem_info[0].decode('hex'),
+                                  len_rsa,
+                                  rsa_data,
+                                  iv,
+                                  cipher.encrypt(inner.packetize()),
+                                  Random.new().read(30))
+            digest = hashlib.sha512(newhead).digest()
+            newhead += digest
             headers.insert(0, newhead)
             next_hop = rem_info[1]
         # The final step of encoding is to merge the headers (along with fake
