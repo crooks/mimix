@@ -69,10 +69,12 @@ def process_inbound():
                 continue
             # Process the Base64 component of the message.
             m.decode(packet_data['binary'])
-            in_pool.delete(filename)
             if m.is_exit:
                 #TODO Actually do something with exit messages
                 log.info("We got an exit message!!")
+            else:
+                out_pool.packet_write(m.next_hop, m.mixmsg)
+            in_pool.delete(filename)
 
 
 def process_outbound():

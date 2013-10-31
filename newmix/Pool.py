@@ -57,6 +57,16 @@ class Pool():
                 break
         return fn
 
+    def packet_write(self, next_hop, mixmsg):
+        expire = timing.epoch_days() + self.expire
+        with open(self.filename(), 'w') as f:
+            f.write("Next Hop: %s\n" % next_hop)
+            f.write("Expire: %s\n\n" % expire)
+            f.write("-----BEGIN NEWMIX MESSAGE-----\n")
+            f.write("Version: %s\n\n" % config.get('general', 'version'))
+            f.write("%s" % mixmsg.encode('base64'))
+            f.write("-----END NEWMIX MESSAGE-----\n")
+
     def trigger(self):
         return timing.now() >= self.trigger_time
 

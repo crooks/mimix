@@ -205,8 +205,6 @@ class Message():
         self.rsa_data_size = 512
         self.is_exit = False
         self.keystore = keys.Keystore()
-        self.out_pool = Pool.Pool(name = 'mixpool',
-                                  pooldir = config.get('pool', 'outdir'))
 
     def encode(self, msg, chain):
         headers = []
@@ -280,10 +278,10 @@ class Message():
             next_hop = rem_info[1]
         # The final step of encoding is to merge the headers (along with fake
         # headers for padding) with the body.
-        self.packet = (''.join(headers) +
+        self.mixmsg = (''.join(headers) +
                        Random.new().read((10 - len(headers)) * 1024) +
                        body)
-        self.packet_write(next_hop)
+        self.next_hop = next_hop
 
     def decode(self, packet):
         assert len(packet) == 20480
@@ -332,10 +330,10 @@ class Message():
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[h])
                 headers[h] = cipher.decrypt(headers[h])
             cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
-            self.packet = (''.join(headers) +
+            self.mixmsg = (''.join(headers) +
                            Random.new().read(1024) +
                            cipher.decrypt(packet[10240:20480]))
-            self.packet_write(inner.packet_info.next_hop)
+            self.next_hop = inner.packet_info.next_hop
             self.is_exit = False
 
         elif inner.pkt_type == "1":
@@ -359,16 +357,6 @@ class Message():
         assert len(ivs) % 16 == 0
         b = len(ivs)
         return [ivs[i:i+16] for i in range(0, b, 16)]
-
-    def packet_write(self, next_hop):
-        expire = timing.epoch_days() + self.out_pool.expire
-        with open(self.out_pool.filename(), 'w') as f:
-            f.write("Next Hop: %s\n" % next_hop)
-            f.write("Expire: %s\n\n" % expire)
-            f.write("-----BEGIN NEWMIX MESSAGE-----\n")
-            f.write("Version: %s\n\n" % config.get('general', 'version'))
-            f.write("%s" % self.packet.encode('base64'))
-            f.write("-----END NEWMIX MESSAGE-----\n")
 
     def packet_read(self, text):
         """
@@ -411,6 +399,9 @@ def new_msg():
     print c
     plain_text = "This is a test message\n" * 10
     message.encode(plain_text, c)
+    out_pool = Pool.Pool(name = 'mixpool',
+                         pooldir = config.get('pool', 'outdir'))
+    out_pool.packet_write(message.next_hop, message.mixmsg)
 
 
 log = logging.getLogger("newmix.%s" % __name__)
