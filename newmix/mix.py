@@ -41,7 +41,8 @@ class Intermediate(object):
     """
     Packet type 0 (intermediate hop):
     [ 9 Initialization vectors   144 bytes ]
-    [ Next address               112 bytes ]
+    [ Next address                80 bytes ]
+    [ Anti-tag digest             32 bytes ]
     """
     def new(self):
         self.packet_type = "0"
@@ -49,16 +50,30 @@ class Intermediate(object):
 
     def nexthop(self, address):
         self.next_hop = address
-        self.next_hop_padded = address + ('\x00' * (112 - len(address)))
+        self.next_hop_padded = address + ('\x00' * (80 - len(address)))
+
+    def add_antitag(self, digest):
+        """
+        This is a digest of the next-hop header combined with the payload at
+        the point in time at which they are presented to the remailer
+        processing this header.  The goal is to prevent tagging attacks by
+        making this (honest) remailer drop tagged packets before they
+        potentially reach the dishonest node that's watching for the tag.
+
+        """
+        self.antitag = digest
 
     def packetize(self):
         assert len(self.ivs) == 144
-        assert len(self.next_hop_padded) == 112
-        return self.ivs + self.next_hop_padded
+        assert len(self.next_hop_padded) == 80
+        assert len(self.antitag) == 32
+        return self.ivs + self.next_hop_padded + self.antitag
 
     def decode(self, packet):
+        assert len(packet) == 256
         self.ivs = packet[:144]
-        self.next_hop = packet[144:144 + 112].rstrip('\x00')
+        self.next_hop = packet[144:144 + 80].rstrip('\x00')
+        self.antitag = packet[144 + 80:]
         
 
 class Exit(object):
@@ -69,6 +84,7 @@ class Exit(object):
     [ Message ID                  16 bytes ]
     [ Initialization vector       16 bytes ]
     [ Padding                    222 bytes ]
+    [ Payload digest              32 bytes ]
     """
     def new(self):
         self.packet_type = "1"
@@ -82,13 +98,18 @@ class Exit(object):
         self.chunknum = chunknum
         self.numchunks = numchunks
 
+    def add_payload_digest(self, digest):
+        assert len(digest) == 32
+        self.payload_digest = digest
+
     def packetize(self):
-        packet = struct.pack('<BB16s16s222s',
+        packet = struct.pack('<BB16s16s190s32s',
                              self.chunknum,
                              self.numchunks,
                              self.messageid,
                              self.iv,
-                             Random.new().read(222))
+                             Random.new().read(190),
+                             self.payload_digest)
         assert len(packet) == 256
         return packet
         
@@ -97,7 +118,9 @@ class Exit(object):
         (self.chunknum,
          self.numchunks,
          self.messageid,
-         self.iv) = struct.unpack('<BB16s16s', packet[:34])
+         self.iv,
+         pad,
+         self.payload_digest) = struct.unpack('<BB16s16s190s32s', packet)
 
 
 class Inner(object):
@@ -174,8 +197,7 @@ class Message():
 
     Payload:
     [ Length                         2 bytes ]
-    [ Digest                        64 bytes ]
-    [ Content                    10174 bytes ]
+    [ Content                    10238 bytes ]
     """
 
     def __init__(self):
@@ -203,13 +225,13 @@ class Message():
             # during the first iteration, after which next_hop contains the
             # address of the next hop.
             if next_hop is None:
-                digest = hashlib.sha512(msg).digest()
+                digest = hashlib.sha256(msg).digest()
+                inner.packet_info.add_payload_digest(digest)
                 length = len(msg)
                 cipher = AES.new(inner.aes,
                                  AES.MODE_CFB,
                                  inner.packet_info.iv)
-                body = struct.pack('<H64s', length, digest)
-                body += msg
+                body = struct.pack('<H', length) + msg
                 body = cipher.encrypt(body)
                 pad_bytes = 10240 - len(body)
                 body += Random.new().read(pad_bytes)
@@ -221,6 +243,11 @@ class Message():
                     headers[e] = cipher.encrypt(headers[e])
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
                 body = cipher.encrypt(body)
+                antitag = hashlib.sha256()
+                antitag.update(headers[0])
+                antitag.update(body)
+                inner.packet_info.add_antitag(antitag.digest())
+
 
             # That's it for old header and payload encoding.  The following
             # section handles the header for this specific step.
@@ -266,6 +293,7 @@ class Message():
         # The first header gets processed and removed at this hop.
         tophead = headers.pop(0)
         if hashlib.sha512(tophead[:960]).digest() != tophead[960:]:
+            log.warn("Digest mismatch checking current header")
             raise PacketError("Digest mismatch")
         # Extract the keyid required to decrypt the message.
         keyid = tophead[0:16].encode('hex')
@@ -286,6 +314,15 @@ class Message():
         # need to be decrypted using the AES key from the inner header and the
         # series of 9 IVs stored in the packet info.
         if inner.pkt_type == "0":
+            # First, compare the Anti-Tagging Hash stored in the Packet-Info
+            # against one calculated at this time.
+            antitag = hashlib.sha256()
+            antitag.update(headers[0])
+            antitag.update(packet[10240:])
+            if antitag.digest() != inner.packet_info.antitag:
+                log.warn("Anti-tag digest failure.  This message might have "
+                         "been tampered with.")
+                raise PacketError("Anti-tag digest mismatch")
             ivs = self._split_ivs(inner.packet_info.ivs)
             try:
                 self.keystore.conf_fetch(inner.packet_info.next_hop)
@@ -303,12 +340,12 @@ class Message():
 
         elif inner.pkt_type == "1":
             cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
-            (length,
-             digest,
-             body) = struct.unpack("<H64s10174s",
-                                   cipher.decrypt(packet[10240:20480]))
+            (length, body) = struct.unpack("<H10238s",
+                                    cipher.decrypt(packet[10240:20480]))
             body = body[:length]
-            if digest != hashlib.sha512(body).digest():
+            payload_digest = hashlib.sha256(body).digest()
+            if inner.packet_info.payload_digest != payload_digest:
+                log.warn("Payload digest does not match hash in packet_info.")
                 raise PacketError("Content Digest Error")
             self.text = body
             self.is_exit = True
