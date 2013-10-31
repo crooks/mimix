@@ -31,11 +31,14 @@ import logging
 import http
 from Crypto.Random import random
 
+
 class KeyImportError(Exception):
     pass
 
+
 class ChainError(Exception):
     pass
+
 
 class DBGeneric(object):
     def count(self):
@@ -51,7 +54,7 @@ class DBGeneric(object):
         exe("""SELECT name FROM keyring
                WHERE pubkey IS NOT NULL AND (smtp or smtp=?)
                AND advertise""", insert)
-        data =  cur.fetchall()
+        data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
 
@@ -64,7 +67,7 @@ class DBGeneric(object):
         exe("""SELECT address FROM keyring
                WHERE pubkey IS NOT NULL AND (smtp or smtp=?)
                AND advertise""", insert)
-        data =  cur.fetchall()
+        data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
 
@@ -130,7 +133,7 @@ class Keystore(DBGeneric):
         return str(keyid)
 
     def test_load(self):
-        for n in range(0,10):
+        for n in range(0, 10):
             seckey = RSA.generate(1024)
             pubkey = seckey.publickey()
             pubpem = pubkey.exportKey(format='PEM')
@@ -182,9 +185,10 @@ class Keystore(DBGeneric):
             log.info("Running routine daily housekeeping actions.")
 
         # Stop advertising keys that expire in the next 28 days.
-        plus28 = timing.timestamp(timing.future(days=28))
-        exe('''UPDATE keyring SET advertise=0
-                              WHERE ?>validto AND advertise=1''', (plus28,))
+        criteria = (timing.timestamp(timing.future(days=28)),)
+        exe('''UPDATE keyring SET advertise = 0
+               WHERE (? > validto OR uptime <= 0)
+               AND advertise''', criteria)
         # Delete any keys that have expired.
         exe('DELETE FROM keyring WHERE datetime("now") > validto')
         con.commit()
@@ -206,7 +210,7 @@ class Keystore(DBGeneric):
 
         # Set the daily trigger to today's date.
         self.daily_trigger = timing.epoch_days()
-        
+
     def get_public(self, name):
         """ Public keys are only used during encoding operations (client mode
             and random hops).  Performance is not important so no caching is
@@ -343,10 +347,11 @@ class Keystore(DBGeneric):
 class Chain(DBGeneric):
     """
     """
-    def contenders(self, uptime=config.getint('chain', 'uptime'),
-                         maxlat=config.getint('chain', 'maxlat'),
-                         minlat=config.getint('chain', 'minlat'),
-                         smtp=False):
+    def contenders(self,
+                   uptime=config.getint('chain', 'uptime'),
+                   maxlat=config.getint('chain', 'maxlat'),
+                   minlat=config.getint('chain', 'minlat'),
+                   smtp=False):
         """
         Find all the known Remailers that meet the selection criteria of
         Uptime, Maximum Latency and Minimum Latency.  An additional criteria
@@ -358,7 +363,7 @@ class Chain(DBGeneric):
         exe("""SELECT name FROM keyring
                WHERE uptime>=? AND latency<=? AND latency>=? AND
                pubkey IS NOT NULL AND (smtp or smtp=?)""", insert)
-        data =  cur.fetchall()
+        data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
 
@@ -429,6 +434,28 @@ class Chain(DBGeneric):
             chain.insert(0, remailer)
             distance_exclude.append(remailer)
         return chain
+
+
+class Pinger(DBGeneric):
+    def decrement_uptime(address, step):
+        criteria = (step, address)
+        exe("""UPDATE keyring SET uptime = uptime - ?
+               WHERE address = ? AND uptime > 0""", criteria)
+        con.commit()
+
+    def increment_uptime(address, step):
+        criteria = (step, address)
+        exe("""UPDATE keyring SET uptime = uptime + ?
+               WHERE address = ? AND uptime < 100""", criteria)
+        con.commit()
+
+    def dead_remailers():
+        criteria = (timing.timestamp(timing.future(days=28)),)
+        exe("""SELECT address FROM keyring
+               WHERE NOT advertise AND validto >= ?""", criteria)
+        data = cur.fetchall()
+        column = 0
+        return [e[column] for e in data]
 
 
 con = sqlite3.connect(config.get('general', 'dbfile'))
