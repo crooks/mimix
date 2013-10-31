@@ -30,7 +30,6 @@ from Config import config
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
-import keys
 
 
 class PacketError(Exception):
@@ -200,11 +199,11 @@ class Message():
     [ Content                    10238 bytes ]
     """
 
-    def __init__(self):
+    def __init__(self, keystore):
         self.packet_size = 1024
         self.rsa_data_size = 512
         self.is_exit = False
-        self.keystore = keys.Keystore()
+        self.keystore = keystore
 
     def encode(self, msg, chain):
         headers = []
@@ -393,8 +392,10 @@ class Message():
 
 
 def new_msg():
+    import keys
     chain = keys.Chain()
-    message = Message()
+    k = keys.Keystore()
+    message = Message(k)
     c = chain.create()
     print c
     plain_text = "This is a test message\n" * 10

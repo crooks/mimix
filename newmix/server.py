@@ -29,6 +29,7 @@ from Config import config
 import mix
 import Pool
 import timing
+import keys
 from daemon import Daemon
 
 
@@ -58,6 +59,7 @@ def process_inbound():
     generator = in_pool.select_all()
     for filename in generator:
         with open(filename, 'r') as f:
+            m = mix.Message(k)
             try:
                 packet_data = m.packet_read(f.read())
             except ValueError, e:
@@ -88,9 +90,10 @@ def process_outbound():
     generator = out_pool.select_subset()
     for filename in generator:
         with open(filename, 'r') as f:
+            m = mix.Message(k)
             try:
                 packet_data = m.packet_read(f.read())
-            except ValveError, e:
+            except ValueError, e:
                 log.debug("Newmix packet read failed with: %s", e)
                 out_pool.delete(filename)
                 continue
@@ -135,8 +138,7 @@ if (__name__ == "__main__"):
     #handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-
-    m = mix.Message()
+    k = keys.Keystore()
     # The inbound pool always processes every message.
     in_pool = Pool.Pool(name='inpool',
                         pooldir=config.get('pool', 'indir'))
