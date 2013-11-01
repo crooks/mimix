@@ -30,6 +30,7 @@ import mix
 import Pool
 import timing
 import keys
+import sendmail
 from daemon import Daemon
 
 
@@ -72,10 +73,9 @@ def process_inbound():
             # Process the Base64 component of the message.
             m.decode(packet_data['binary'])
             if m.is_exit:
-                #TODO Actually do something with exit messages
-                log.info("We got an exit message!!")
+                sendmail.parse_txt(m.text)
             else:
-                out_pool.packet_write(m.next_hop, m.mixmsg)
+                out_pool.packet_write(m)
             in_pool.delete(filename)
 
 

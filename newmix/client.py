@@ -24,22 +24,42 @@ import argparse
 import mix
 import sys
 import keys
+import requests
 
-m = mix.Message()
+k = keys.Keystore()
+m = mix.Message(k)
 chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Newmix Client')
 parser.add_argument('--file', type=str, dest='filename')
 parser.add_argument('--stdout', dest='stdout', action='store_true')
+parser.add_argument('--chain', type=str, dest='chainstr')
 args = parser.parse_args()
 #TODO Proper chain handling
-c = chain.create()
+if args.chainstr:
+    c = chain.create(chainstr=args.chainstr)
+else:
+    c = chain.create()
 sys.stdout.write('Chain is %s\n' % c)
 if args.filename:
     with open(args.filename, 'r') as f:
-        m.encode(f.read(), c)
+        m.new(f.read(), c)
 else:
     sys.stdout.write("Type message here.  Finish with Ctrl-D.\n")
-    m.encode(sys.stdin.read(), c)
+    m.new(sys.stdin.read(), c)
 
 if args.stdout:
-    sys.stdout.write(m.packet)
+    sys.stdout.write(m.text())
+else:
+    payload = {'base64': m.text()}
+    recipient = 'http://%s/collector.py/msg' % m.next_hop
+    try:
+        # Send the message to the first hop.
+        r = requests.post(recipient, data=payload)
+        if r.status_code == requests.codes.ok:
+            sys.stdout.write("Message delivered to %s\n" % m.next_hop)
+        else:
+            sys.stderr.write("Delivery to %s failed with status code: %s.\n"
+                             % (recipient, r.status_code))
+    except requests.exceptions.ConnectionError:
+        #TODO Mark down remailer statistics.
+        sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
