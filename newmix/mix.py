@@ -200,12 +200,13 @@ class Message():
     """
 
     def __init__(self, keystore):
-        self.packet_size = 1024
         self.rsa_data_size = 512
         self.is_exit = False
+        # Encode and decode operations require the keystore so scoping it
+        # in the Class kind of makes sense.
         self.keystore = keystore
 
-    def encode(self, msg, chain):
+    def new(self, msg, chain):
         headers = []
         # next_hop is used to ascertain is this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -281,6 +282,13 @@ class Message():
                        Random.new().read((10 - len(headers)) * 1024) +
                        body)
         self.next_hop = next_hop
+
+    def text(self):
+        msg = "-----BEGIN NEWMIX MESSAGE-----\n"
+        msg += "Version: %s\n\n" % config.get('general', 'version')
+        msg +=  self.mixmsg.encode('base64')
+        msg += "-----END NEWMIX MESSAGE-----\n"
+        return msg
 
     def decode(self, packet):
         assert len(packet) == 20480
@@ -399,10 +407,10 @@ def new_msg():
     c = chain.create()
     print c
     plain_text = "This is a test message\n" * 10
-    message.encode(plain_text, c)
+    message.new(plain_text, c)
     out_pool = Pool.Pool(name = 'mixpool',
                          pooldir = config.get('pool', 'outdir'))
-    out_pool.packet_write(message.next_hop, message.mixmsg)
+    out_pool.packet_write(message)
 
 
 log = logging.getLogger("newmix.%s" % __name__)
