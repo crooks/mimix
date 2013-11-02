@@ -33,13 +33,19 @@ parser = argparse.ArgumentParser(description='Newmix Client')
 parser.add_argument('--file', type=str, dest='filename')
 parser.add_argument('--stdout', dest='stdout', action='store_true')
 parser.add_argument('--chain', type=str, dest='chainstr')
+parser.add_argument('--fetch', type=str, dest='fetchurl')
 args = parser.parse_args()
-#TODO Proper chain handling
+
+if args.fetchurl:
+    k.conf_fetch(args.fetchurl)
+    sys.exit(0)
+
+# Chain creation
 if args.chainstr:
     c = chain.create(chainstr=args.chainstr)
 else:
     c = chain.create()
-sys.stdout.write('Chain is %s\n' % c)
+
 if args.filename:
     with open(args.filename, 'r') as f:
         m.new(f.read(), c)

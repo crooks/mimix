@@ -256,9 +256,11 @@ class Keystore(DBGeneric):
         f.write("SMTP: %s\n" % smtp)
         f.write("\n%s\n\n" % pub)
         criteria = (self.mykey[0],)
-        # Only the addresses of known remailers is advertised.  It's up to the
-        # third party to gather further details directly from the source.
-        exe('''SELECT address FROM keyring
+        # Only the addresses of known remailers are advertised. It's up to the
+        # third party to gather further details directly from the source.  The
+        # query only grabs distinct addresses as we only expect to find a
+        # single remailer per address, even if multiple keys may be current.
+        exe('''SELECT DISTINCT address FROM keyring
                WHERE keyid != ? AND advertise''', criteria)
         data = cur.fetchall()
         f.write("Known remailers:-\n")
