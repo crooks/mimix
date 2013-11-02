@@ -65,6 +65,8 @@ config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')
 config.set('pool', 'expire', 7)
 
+config.add_section('http')
+config.set('http', 'wwwdir', os.path.join(homedir, 'apache', 'www'))
 # Try and process the .newmixrc file.  If it doesn't exist, we
 # bailout as some options are compulsory.
 if 'NEWMIX' in os.environ:

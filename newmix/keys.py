@@ -245,7 +245,9 @@ class Keystore(DBGeneric):
         exe("""SELECT name,address,validfr,validto,smtp, pubkey FROM keyring
                       WHERE keyid=?""", (self.mykey[0],))
         name, address, fr, to, smtp, pub = cur.fetchone()
-        f = open("publish.txt", 'w')
+        filename = os.path.join(config.get('http', 'wwwdir'),
+                                'remailer-conf.txt')
+        f = open(filename, 'w')
         f.write("Name: %s\n" % name)
         f.write("Address: %s\n" % address)
         f.write("KeyID: %s\n" % self.mykey[0])
