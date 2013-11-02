@@ -1,0 +1,6 @@
+#!/bin/bash
+
+APACHE2=/usr/sbin/apache2
+DIR=$HOME/apache
+
+$APACHE2 -d $DIR -f $DIR/conf/httpd.conf
