@@ -41,6 +41,18 @@ class ChainError(Exception):
 
 
 class DBGeneric(object):
+    def booltext(self, boolean):
+        if boolean:
+            return "Yes"
+        else:
+            return "No"
+
+    def textbool(self, text):
+        if text.lower() == "yes":
+            return True
+        else:
+            return False
+
     def count(self):
         exe("SELECT COUNT(name) FROM keyring WHERE advertise")
         return cur.fetchone()[0]
@@ -52,7 +64,7 @@ class DBGeneric(object):
         """
         insert = (smtp,)
         exe("""SELECT name FROM keyring
-               WHERE pubkey IS NOT NULL AND (smtp or smtp=?)
+               WHERE pubkey IS NOT NULL AND (smtp OR smtp=?)
                AND advertise""", insert)
         data = cur.fetchall()
         column = 0
@@ -65,11 +77,17 @@ class DBGeneric(object):
         """
         insert = (smtp,)
         exe("""SELECT address FROM keyring
-               WHERE pubkey IS NOT NULL AND (smtp or smtp=?)
+               WHERE pubkey IS NOT NULL AND (smtp OR smtp=?)
                AND advertise""", insert)
         data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
+
+    def list_remailers(self, smtp=False):
+        criteria = (smtp,)
+        exe("""SELECT name,address,keyid FROM keyring
+               WHERE advertise AND (smtp OR smtp=?)""", criteria)
+        return cur.fetchall()
 
 
 class Keystore(DBGeneric):
@@ -247,13 +265,14 @@ class Keystore(DBGeneric):
         name, address, fr, to, smtp, pub = cur.fetchone()
         filename = os.path.join(config.get('http', 'wwwdir'),
                                 'remailer-conf.txt')
+        smtptxt = self.booltext(smtp)
         f = open(filename, 'w')
         f.write("Name: %s\n" % name)
         f.write("Address: %s\n" % address)
         f.write("KeyID: %s\n" % self.mykey[0])
         f.write("Valid From: %s\n" % fr)
         f.write("Valid To: %s\n" % to)
-        f.write("SMTP: %s\n" % smtp)
+        f.write("SMTP: %s\n" % smtptxt)
         f.write("\n%s\n\n" % pub)
         criteria = (self.mykey[0],)
         # Only the addresses of known remailers are advertised. It's up to the
@@ -334,7 +353,7 @@ class Keystore(DBGeneric):
                       keys['keyid'],
                       keys['validfr'],
                       keys['validto'],
-                      bool(keys['smtp']),
+                      self.textbool(keys['smtp']),
                       keys['pubkey'],
                       1)
         except KeyError:
@@ -482,5 +501,4 @@ if (__name__ == "__main__"):
     ks = Keystore()
     #ks.test_load()
     #ks.conf_fetch("www.mixmin.net")
-    chain = Chain()
-    print chain.create()
+    print ks.list_remailers()

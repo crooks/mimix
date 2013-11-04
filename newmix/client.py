@@ -26,46 +26,87 @@ import sys
 import keys
 import requests
 
+
+def send_msg(args):
+    # Chain creation
+    if args.chainstr:
+        c = chain.create(chainstr=args.chainstr)
+    else:
+        c = chain.create()
+    sys.stdout.write("Chain: %s\n" % ','.join(c))
+
+    if args.filename:
+        with open(args.filename, 'r') as f:
+            msg = f.read()
+    else:
+        sys.stdout.write("Type message here.  Finish with Ctrl-D.\n")
+        msg = sys.stdin.read()
+
+    if args.recipient:
+        tohead = "To: %s\n" % args.recipient
+        msg = tohead + msg
+
+    # Encode the message
+    m.new(msg, c)
+
+    if args.stdout:
+        sys.stdout.write(m.text())
+    else:
+        payload = {'base64': m.text()}
+        url = 'http://%s/collector.py/msg' % m.next_hop
+        try:
+            # Send the message to the first hop.
+            r = requests.post(url, data=payload)
+            if r.status_code == requests.codes.ok:
+                sys.stdout.write("Message delivered to %s\n" % m.next_hop)
+            else:
+                sys.stderr.write("Delivery to %s failed with status code: %s."
+                                 "\n" % (url, r.status_code))
+        except requests.exceptions.ConnectionError:
+            #TODO Mark down remailer statistics.
+            sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
+
+def fetch_url(args):
+    if args.url:
+        k.conf_fetch(args.url)
+    else:
+        sys.stderr.write("fetch: No URL specified\n")
+
+def remailer_info(args):
+    if args.listkeys:
+        for row in k.list_remailers(smtp=args.exitonly):
+            sys.stdout.write('%-14s %-30s %32s\n' % row)
+
 k = keys.Keystore()
 m = mix.Message(k)
 chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Newmix Client')
-parser.add_argument('--file', type=str, dest='filename')
-parser.add_argument('--stdout', dest='stdout', action='store_true')
-parser.add_argument('--chain', type=str, dest='chainstr')
-parser.add_argument('--fetch', type=str, dest='fetchurl')
+cmds = parser.add_subparsers(help='Commands')
+
+send = cmds.add_parser('send', help="Send a message")
+send.set_defaults(func=send_msg)
+send.add_argument('--file', type=str, dest='filename',
+                  help="Read source message from a file")
+send.add_argument('--stdout', dest='stdout', action='store_true',
+                  help=("Write a newmix message to stdout instead of "
+                          "sending it to the first hop."))
+send.add_argument('--chain', type=str, dest='chainstr',
+                  help="Define the Chain a message should use.")
+send.add_argument('--recipient', type=str, dest='recipient',
+                  help="Specify a recipient address")
+
+fetch = cmds.add_parser('fetch', help="Read remailer-config")
+fetch.set_defaults(func=fetch_url)
+fetch.add_argument('--url', type=str, dest='url',
+                    help="Fetch a remailer-conf from the specified address")
+
+info = cmds.add_parser('info', help="Remailer info")
+info.set_defaults(func=remailer_info)
+info.add_argument('--keys', dest='listkeys', action='store_true',
+                  help="List all known remailers and their keyids")
+info.add_argument('--exit', dest='exitonly', action='store_true',
+                  help="List only exit remailers")
+
 args = parser.parse_args()
-
-if args.fetchurl:
-    k.conf_fetch(args.fetchurl)
-    sys.exit(0)
-
-# Chain creation
-if args.chainstr:
-    c = chain.create(chainstr=args.chainstr)
-else:
-    c = chain.create()
-
-if args.filename:
-    with open(args.filename, 'r') as f:
-        m.new(f.read(), c)
-else:
-    sys.stdout.write("Type message here.  Finish with Ctrl-D.\n")
-    m.new(sys.stdin.read(), c)
-
-if args.stdout:
-    sys.stdout.write(m.text())
-else:
-    payload = {'base64': m.text()}
-    recipient = 'http://%s/collector.py/msg' % m.next_hop
-    try:
-        # Send the message to the first hop.
-        r = requests.post(recipient, data=payload)
-        if r.status_code == requests.codes.ok:
-            sys.stdout.write("Message delivered to %s\n" % m.next_hop)
-        else:
-            sys.stderr.write("Delivery to %s failed with status code: %s.\n"
-                             % (recipient, r.status_code))
-    except requests.exceptions.ConnectionError:
-        #TODO Mark down remailer statistics.
-        sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
+args.func(args)
+#if args.fetch:
