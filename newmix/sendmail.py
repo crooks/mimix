@@ -30,12 +30,13 @@ from email.mime.text import MIMEText
 
 def parse_txt(text):
     msg = Parser().parsestr(text)
-    s = smtplib.SMTP('localhost')
-    log.debug("Delivering message to: %s", msg['To'])
-    try:
-        s.sendmail(msg['From'], msg['To'], text)
-    except smtplib.SMTPRecipientsRefused, e:
-        log.info("Email error: %s", e)
+    if msg['From'] and msg['To']:
+        s = smtplib.SMTP('localhost')
+        log.debug("Delivering message to: %s", msg['To'])
+        try:
+            s.sendmail(msg['From'], msg['To'], text)
+        except smtplib.SMTPRecipientsRefused, e:
+            log.info("Email error: %s", e)
 
 
 log = logging.getLogger("newmix.%s" % __name__)
