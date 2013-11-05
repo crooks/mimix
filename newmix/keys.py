@@ -57,6 +57,12 @@ class KeyFuncs(object):
         exe("SELECT COUNT(name) FROM keyring WHERE advertise")
         return cur.fetchone()[0]
 
+    def count_addresses(self, address):
+        criteria = (address,)
+        exe("""SELECT COUNT(address) FROM keyring
+               WHERE address = ? AND advertise""", criteria)
+        return int(cur.fetchone()[0])
+
     def all_remailers_by_name(self, smtp=False):
         """
         Return a list of all known remailers (with public keys).
@@ -111,15 +117,50 @@ class KeyFuncs(object):
         con.commit()
         return cur.rowcount
 
+    def update(self):
+        # Stop advertising keys that expire in the next 28 days.
+        criteria = (timing.timestamp(timing.future(days=28)),)
+        exe('''UPDATE keyring SET advertise = 0
+               WHERE (? > validto OR uptime <= 0)
+               AND advertise AND seckey IS NOT NULL''', criteria)
+        # Delete any keys that have expired.
+        exe('DELETE FROM keyring WHERE datetime("now") > validto')
+        con.commit()
+        return cur.rowcount
+
+    def toggle_exit(self, name):
+        criteria = (name,)
+        exe("UPDATE keyring SET smtp = NOT smtp WHERE name = ?", criteria)
+        con.commit()
+        return cur.rowcount
+
+    def set_latency(self, name, latency):
+        assert latency >= 0 and latency <= 60 * 24 * 28
+        criteria = (latency, name)
+        exe("UPDATE keyring SET latency = ? WHERE name = ?", criteria)
+        con.commit()
+        return cur.rowcount
+
+    def set_uptime(self, name, uptime):
+        assert uptime >= 0 and uptime <= 100
+        criteria = (uptime, name)
+        exe("UPDATE keyring SET uptime = ? WHERE name = ?", criteria)
+        con.commit()
+        return cur.rowcount
+
     def conf_fetch(self, address):
-        if address.startswith("http://"):
-            address = address[7:]
+        if '://' in address:
+            address = address.split('://', 1)[1]
 
         conf_page = http.get("http://%s/remailer-conf.txt" % address)
         if conf_page is None:
             raise KeyImportError("Could not retreive remailer-conf for %s"
                                  % address)
         keys = {}
+        # Known Remailer List.  When processing reaches "Known remailers", the
+        # subsequent lines should be known remailer addresses.
+        krl = False
+        known_remailers = {}
         for line in conf_page.split("\n"):
             if ": " in line:
                 key, val = line.split(": ", 1)
@@ -128,6 +169,10 @@ class KeyFuncs(object):
                 elif key == "Valid To":
                     key = "validto"
                 keys[key.lower()] = val
+            elif krl and line not in known_remailers:
+                known_remailers[line] = 0
+            if line == 'Known remailers:-':
+                krl = True
         b = conf_page.rfind("-----BEGIN PUBLIC KEY-----")
         e = conf_page.rfind("-----END PUBLIC KEY-----")
         if b >= 0 and e >= 0:
@@ -155,23 +200,41 @@ class KeyFuncs(object):
             raise KeyImportError("KeyID not published")
         if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
             raise KeyImportError("Key digest error")
-        # Convert keys to an ordered tuple, ready for a DB insert.
+        # Convert keys to an ordered tuple, ready for a DB insert/update.
         try:
-            insert = (keys['name'],
-                      keys['address'],
+            values = (keys['name'],
                       keys['keyid'],
                       keys['validfr'],
                       keys['validto'],
                       self.textbool(keys['smtp']),
                       keys['pubkey'],
-                      1)
+                      1,
+                      keys['address'])
         except KeyError:
             # We need all the above keys to perform a valid import
             raise KeyImportError("Import Tuple construction failed")
+        while True:
+            count = self.count_addresses(keys['address'])
+            if count <= 1:
+                break
+            self.delete_address(keys['address'])
+        if count == 0:
+            exe("""INSERT INTO keyring (name, keyid, validfr, validto, smtp,
+                                        pubkey, advertise, address)
+                               VALUES (?,?,?,?,?,?,?,?)""", values)
+        elif count == 1:
+            exe("""UPDATE keyring set (name, keyid, validfr, validto, smtp,
+                                       pubkey, advertise)
+                          VALUES (?,?,?,?,?,?,?) WHERE address = ?""", values)
+        con.commit()
+        return known_remailers
+
+    def db_insert(self, values):
         exe("""INSERT INTO keyring (name, address, keyid, validfr, validto,
                                     smtp, pubkey, advertise)
-                           VALUES (?,?,?,?,?,?,?,?)""", insert)
+                           VALUES (?,?,?,?,?,?,?,?)""", values)
         con.commit()
+        
 
 class Keystore(KeyFuncs):
     """
@@ -487,18 +550,18 @@ class Chain(KeyFuncs):
         # randomly selected (Depicted by an '*' or hardcoded (by remailer
         # address).
         nodes = [n.strip() for n in chainstr.split(',')]
-        exits = self.contenders(uptime=70, maxlat=2880, smtp=True)
-        # contenders is a list of exit remailers that don't conflict with any
-        # hardcoded remailers within the proximity of "distance".  Without
-        # this check, the exit remailer would be selected prior to
-        # consideration of distance compliance.
-        contenders = list(set(exits).difference(nodes[0 - distance:]))
-        if len(contenders) == 0:
-            raise ChainError("No exit remailers meet selection criteria")
         exit = nodes.pop()
         if exit == "*":
+            exits = self.contenders(uptime=70, maxlat=2880, smtp=True)
+            # contenders is a list of exit remailers that don't conflict with any
+            # hardcoded remailers within the proximity of "distance".  Without
+            # this check, the exit remailer would be selected prior to
+            # consideration of distance compliance.
+            contenders = list(set(exits).difference(nodes[0 - distance:]))
+            if len(contenders) == 0:
+                raise ChainError("No exit remailers meet selection criteria")
             exit = contenders[random.randint(0, len(exits) - 1)]
-        elif exit not in exits:
+        elif exit not in self.all_remailers_by_name(smtp=True):
             log.error("%s: Invalid hardcoded exit remailer", exit)
             raise ChainError("Invalid exit node")
         chain = [exit]

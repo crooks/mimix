@@ -68,14 +68,44 @@ def send_msg(args):
             #TODO Mark down remailer statistics.
             sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
 
-def fetch_url(args):
-    if args.url:
+def keyring_update(args):
+    if args.fetchurl:
         try:
-            k.conf_fetch(args.url)
+            print k.conf_fetch(args.fetchurl)
         except keys.KeyImportError, e:
             sys.stderr.write("%s\n" % e)
-    else:
-        sys.stderr.write("fetch: No URL specified\n")
+    if args.refresh:
+        count = k.update()
+        sys.stdout.write("Expired / Deleted %s keys\n" % count)
+    if args.setexit:
+        if not args.name:
+            sys.stderr('Error: --setexit requires --name=remailer_name\n')
+        else:
+            sys.stdout.write("Toggled %s exit status for remailer: %s\n"
+                             % (k.toggle_exit(args.setexit), args.setexit))
+    if args.latency:
+        if not args.name:
+            sys.stderr.write("Error: --latency requires "
+                             "--name=remailer_name\n")
+        else:
+            count = k.set_latency(args.name, args.latency)
+            if count > 0:
+                sys.stdout.write("%s: Latency=%s\n"
+                                 % (args.name, args.latency))
+            else:
+                sys.stderr.write("Latency not updated for any remailers\n")
+
+    if args.uptime:
+        if not args.name:
+            sys.stderr.write("Error: --uptime requires "
+                             "--name=remailer_name\n")
+        else:
+            count = k.set_uptime(args.name, args.uptime)
+            if count > 0:
+                sys.stdout.write("%s: Uptime=%s\n"
+                                 % (args.name, args.uptime))
+            else:
+                sys.stderr.write("Uptime not updated for any remailers\n")
 
 def remailer_info(args):
     if args.listkeys:
@@ -110,10 +140,22 @@ send.add_argument('--chain', type=str, dest='chainstr',
 send.add_argument('--recipient', type=str, dest='recipient',
                   help="Specify a recipient address")
 
-fetch = cmds.add_parser('fetch', help="Read remailer-config")
-fetch.set_defaults(func=fetch_url)
-fetch.add_argument('--url', type=str, dest='url',
+update = cmds.add_parser('update', help="Perform keyring updates")
+update.set_defaults(func=keyring_update)
+update.add_argument('--fetch', type=str, dest='fetchurl',
                     help="Fetch a remailer-conf from the specified address")
+update.add_argument('--refresh', dest='refresh', action='store_true',
+                    help="Delete expired keys")
+update.add_argument('--setexit', type=str, dest='setexit',
+                    help="Toggle the exit status for the given address")
+update.add_argument('--name', type=str, dest='name',
+                    help="Specify a remailer name")
+update.add_argument('--uptime', type=int, dest='uptime',
+                    help=("Manually set the uptime stats for the specified"
+                          "remailer name"))
+update.add_argument('--latency', type=int, dest='latency',
+                    help=("Manually set the latency time for the specified "
+                          "remailer name"))
 
 info = cmds.add_parser('info', help="Remailer info")
 info.set_defaults(func=remailer_info)
@@ -132,6 +174,7 @@ delgroup.add_argument('--keyid', type=str, dest='keyid',
                     help="Delete remailers by keyid")
 delgroup.add_argument('--address', type=str, dest='address',
                     help="Delete remailers by address")
+
 args = parser.parse_args()
 args.func(args)
 #if args.fetch:
