@@ -40,7 +40,7 @@ class ChainError(Exception):
     pass
 
 
-class DBGeneric(object):
+class KeyFuncs(object):
     def booltext(self, boolean):
         if boolean:
             return "Yes"
@@ -89,8 +89,91 @@ class DBGeneric(object):
                WHERE advertise AND (smtp OR smtp=?)""", criteria)
         return cur.fetchall()
 
+    def list_stats(self, smtp=False):
+        criteria = (smtp,)
+        exe("""SELECT name,address,uptime,
+               latency / 60,latency % 60 FROM keyring
+               WHERE advertise AND (smtp OR smtp=?) AND
+               uptime IS NOT NULL and latency IS NOT NULL
+               ORDER BY uptime""", criteria)
+        return cur.fetchall()
+    
 
-class Keystore(DBGeneric):
+    def delete_keyid(self, keyid):
+        criteria = (keyid,)
+        exe("DELETE FROM keyring WHERE keyid = ?", criteria)
+        con.commit()
+        return cur.rowcount
+
+    def delete_address(self, address):
+        criteria = (address,)
+        exe("DELETE FROM keyring WHERE address = ?", criteria)
+        con.commit()
+        return cur.rowcount
+
+    def conf_fetch(self, address):
+        if address.startswith("http://"):
+            address = address[7:]
+
+        conf_page = http.get("http://%s/remailer-conf.txt" % address)
+        if conf_page is None:
+            raise KeyImportError("Could not retreive remailer-conf for %s"
+                                 % address)
+        keys = {}
+        for line in conf_page.split("\n"):
+            if ": " in line:
+                key, val = line.split(": ", 1)
+                if key == "Valid From":
+                    key = "validfr"
+                elif key == "Valid To":
+                    key = "validto"
+                keys[key.lower()] = val
+        b = conf_page.rfind("-----BEGIN PUBLIC KEY-----")
+        e = conf_page.rfind("-----END PUBLIC KEY-----")
+        if b >= 0 and e >= 0:
+            keys['pubkey'] = conf_page[b:e + 24]
+        else:
+            # Can't import a remailer without a pubkey
+            raise KeyImportError("Public key not found")
+        try:
+            test = RSA.importKey(keys['pubkey'])
+        except ValueError:
+            raise KeyImportError("Public key is not valid")
+
+        # Date validation section
+        try:
+            if not 'validfr' in keys or not 'validto' in keys:
+                raise KeyImportError("Validity period not defined")
+            if timing.dateobj(keys['validfr']) > timing.now():
+                raise KeyImportError("Key is not yet valid")
+            if timing.dateobj(keys['validto']) < timing.now():
+                raise KeyImportError("Key has expired")
+        except ValueError:
+            raise KeyImportError("Invalid date format")
+        # The KeyID should always be the MD5 hash of the Pubkey.
+        if 'keyid' not in keys:
+            raise KeyImportError("KeyID not published")
+        if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
+            raise KeyImportError("Key digest error")
+        # Convert keys to an ordered tuple, ready for a DB insert.
+        try:
+            insert = (keys['name'],
+                      keys['address'],
+                      keys['keyid'],
+                      keys['validfr'],
+                      keys['validto'],
+                      self.textbool(keys['smtp']),
+                      keys['pubkey'],
+                      1)
+        except KeyError:
+            # We need all the above keys to perform a valid import
+            raise KeyImportError("Import Tuple construction failed")
+        exe("""INSERT INTO keyring (name, address, keyid, validfr, validto,
+                                    smtp, pubkey, advertise)
+                           VALUES (?,?,?,?,?,?,?,?)""", insert)
+        con.commit()
+
+class Keystore(KeyFuncs):
     """
     """
     def __init__(self):
@@ -367,7 +450,7 @@ class Keystore(DBGeneric):
         return keys['keyid'], keys['pubkey']
 
 
-class Chain(DBGeneric):
+class Chain(KeyFuncs):
     """
     """
     def contenders(self,
@@ -459,7 +542,7 @@ class Chain(DBGeneric):
         return chain
 
 
-class Pinger(DBGeneric):
+class Pinger(KeyFuncs):
     def decrement_uptime(address, step):
         criteria = (step, address)
         exe("""UPDATE keyring SET uptime = uptime - ?

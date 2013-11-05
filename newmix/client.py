@@ -47,6 +47,8 @@ def send_msg(args):
         msg = tohead + msg
 
     # Encode the message
+    k = keys.Keystore()
+    m = mix.Message(k)
     m.new(msg, c)
 
     if args.stdout:
@@ -68,7 +70,10 @@ def send_msg(args):
 
 def fetch_url(args):
     if args.url:
-        k.conf_fetch(args.url)
+        try:
+            k.conf_fetch(args.url)
+        except keys.KeyImportError, e:
+            sys.stderr.write("%s\n" % e)
     else:
         sys.stderr.write("fetch: No URL specified\n")
 
@@ -76,9 +81,19 @@ def remailer_info(args):
     if args.listkeys:
         for row in k.list_remailers(smtp=args.exitonly):
             sys.stdout.write('%-14s %-30s %32s\n' % row)
+    elif args.liststats:
+        for row in k.list_stats(smtp=args.exitonly):
+            sys.stdout.write('%-14s %-30s %s%% %s:%02d\n' % row)
 
-k = keys.Keystore()
-m = mix.Message(k)
+def remailer_delete(args):
+    if args.keyid:
+        count = k.delete_keyid(args.keyid)
+    elif args.address:
+        count = k.delete_address(args.address)
+    
+    sys.stdout.write("Deleted %s entries\n" % count)
+
+k = keys.KeyFuncs()
 chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Newmix Client')
 cmds = parser.add_subparsers(help='Commands')
@@ -102,11 +117,21 @@ fetch.add_argument('--url', type=str, dest='url',
 
 info = cmds.add_parser('info', help="Remailer info")
 info.set_defaults(func=remailer_info)
-info.add_argument('--keys', dest='listkeys', action='store_true',
-                  help="List all known remailers and their keyids")
+infogroup = info.add_mutually_exclusive_group(required=True)
+infogroup.add_argument('--keys', dest='listkeys', action='store_true',
+                       help="List all known remailers and their keyids")
+infogroup.add_argument('--stats', dest='liststats', action='store_true',
+                       help="List all known remailers and their stats")
 info.add_argument('--exit', dest='exitonly', action='store_true',
                   help="List only exit remailers")
 
+delete = cmds.add_parser('delete', help="Delete remailers")
+delete.set_defaults(func=remailer_delete)
+delgroup = delete.add_mutually_exclusive_group(required=True)
+delgroup.add_argument('--keyid', type=str, dest='keyid',
+                    help="Delete remailers by keyid")
+delgroup.add_argument('--address', type=str, dest='address',
+                    help="Delete remailers by address")
 args = parser.parse_args()
 args.func(args)
 #if args.fetch:

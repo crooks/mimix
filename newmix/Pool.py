@@ -86,7 +86,6 @@ class Pool():
                            process_num)
         assert process_num <= numfiles
         # Shuffle the poolfiles into a random order
-        Random.atfork()
         random.shuffle(files)
         # Even though the list is shuffled, pick a random point in the list to
         # slice from/to.  It does no harm, might do some good and doesn't cost
