@@ -32,10 +32,12 @@ import timing
 import keys
 import sendmail
 from daemon import Daemon
+from Crypto import Random
 
 
 class Server(Daemon):
     def run(self):
+        Random.atfork()
         # Loop until a SIGTERM or Ctrl-C is received.
         while True:
             # Process outbound messages first.  This ensures that no message
