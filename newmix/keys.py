@@ -41,6 +41,41 @@ class ChainError(Exception):
 
 
 class Client(object):
+    def __init__(self):
+        exe("SELECT name FROM sqlite_master WHERE type='table'")
+        data = cur.fetchall()
+        if data is None:
+            tables = []
+        else:
+            tables = [e[0] for e in data]
+        if 'keyring' not in tables:
+            self.create_keyring()
+        exe('DELETE FROM keyring WHERE datetime("now") > validto')
+        con.commit()
+
+    def create_keyring(self):
+        """
+        Database Structure
+        [ keyid         Text                               Hex Keyid ]
+        [ name          Text                      Friendly Shortname ]
+        [ address       Text            Address (and port if not 80) ]
+        [ pubkey        Text                        Public Key (PEM) ]
+        [ seckey        Text                        Secret Key (PEM) ]
+        [ validfr       Text (Date)                  Valid From Date ]
+        [ validto       Text (Date)                    Valid To Date ]
+        [ advertise     Int  (Bool)               Advertise (Yes/No) ]
+        [ smtp          Int  (Bool)               SMTP Exit (Yes/No) ]
+        [ uptime        Int  (%)                  Uptime Reliability ]
+        [ latency       Int  (Mins)                          Latency ]
+        """
+        log.info('Creating DB table "keyring"')
+        exe('''CREATE TABLE keyring (keyid text, name text, address text,
+                                     pubkey text, seckey text, validfr text,
+                                     validto text, advertise int, smtp int,
+                                     uptime int, latency int,
+                                     UNIQUE (keyid))''')
+        con.commit()
+
     def booltext(self, boolean):
         if boolean:
             return "Yes"
@@ -103,7 +138,6 @@ class Client(object):
                uptime IS NOT NULL and latency IS NOT NULL
                ORDER BY uptime""", criteria)
         return cur.fetchall()
-    
 
     def delete_keyid(self, keyid):
         criteria = (keyid,)
@@ -120,17 +154,6 @@ class Client(object):
     def delete_name(self, name):
         criteria = (name,)
         exe("DELETE FROM keyring WHERE name = ?", criteria)
-        con.commit()
-        return cur.rowcount
-
-    def update(self):
-        # Stop advertising keys that expire in the next 28 days.
-        criteria = (timing.timestamp(timing.future(days=28)),)
-        exe('''UPDATE keyring SET advertise = 0
-               WHERE (? > validto OR uptime <= 0)
-               AND advertise AND seckey IS NOT NULL''', criteria)
-        # Delete any keys that have expired.
-        exe('DELETE FROM keyring WHERE datetime("now") > validto')
         con.commit()
         return cur.rowcount
 
@@ -206,8 +229,33 @@ class Client(object):
             raise KeyImportError("KeyID not published")
         if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
             raise KeyImportError("Key digest error")
-        # Convert keys to an ordered tuple, ready for a DB insert/update.
-        try:
+
+        # Test we have all the required key components required to perform
+        # the forthcoming DB updates.
+        required_keys = ['name', 'address', 'keyid', 'validfr', 'validto',
+                         'smtp', 'pubkey']
+        while required_keys:
+            key = required_keys.pop()
+            if key not in keys:
+                raise KeyImportError("%s: Not found" % key)
+
+        # All checks on the received remailer details are now complete.  From
+        # here we're concerned with updating our DB with those details.  The
+        # address is used as the key field for inserts/updates as it defines
+        # the uniqueness of the remailer to the client.
+        while True:
+            count = self.count_addresses(keys['address'])
+            if count <= 1:
+                break
+            # If these is more than one record with the given address,
+            # ambiguity wins.  We don't know which is correct so it's safest to
+            # assume neither and start from scratch.
+            self.delete_address(keys['address'])
+        if count == 0:
+            # If no record exists for this address, we need to perform an
+            # insert operation.  This includes latency and uptime stats where
+            # we're forced to make the assumption that this is a fast, reliable
+            # remailer.
             values = (keys['name'],
                       keys['address'],
                       keys['keyid'],
@@ -215,20 +263,31 @@ class Client(object):
                       keys['validto'],
                       self.textbool(keys['smtp']),
                       keys['pubkey'],
-                      1)
-        except KeyError:
-            # We need all the above keys to perform a valid import
-            raise KeyImportError("Import Tuple construction failed")
-        # Having got this far into the fetch process, confidence is high that
-        # we have imported valid key data.  The next step is to delete any
-        # existing data for that address and replace it.
-        self.delete_address(keys['address'])
-        exe("""INSERT INTO keyring (name, address, keyid, validfr, validto,
-                                    smtp, pubkey, advertise)
-                           VALUES (?,?,?,?,?,?,?,?)""", values)
+                      1,
+                      100,
+                      0)
+            exe("""INSERT INTO keyring (name, address, keyid, validfr,
+                                        validto, smtp, pubkey, advertise,
+                                        uptime, latency)
+                               VALUES (?,?,?,?,?,?,?,?,?,?)""", values)
+        elif count == 1:
+            values = (keys['name'],
+                      keys['keyid'],
+                      keys['validfr'],
+                      keys['validto'],
+                      self.textbool(keys['smtp']),
+                      keys['pubkey'],
+                      1,
+                      keys['address'])
+            exe("""UPDATE keyring SET (name, keyid, validfr,
+                                       validto, smtp, pubkey, advertise)
+                                  VALUES (?,?,?,?,?,?,?)
+                                  WHERE address = ?""", values)
+        else:
+            raise AssertionError("More than one record for supplied address")
         con.commit()
         return known_remailers
-        
+
 
 class Keystore(Client):
     """
@@ -242,28 +301,16 @@ class Keystore(Client):
         # On startup, force a daily run
         self.daily_events(force=True)
 
-    def create_keyring(self):
-        """
-        Database Structure
-        [ keyid         Text                               Hex Keyid ]
-        [ name          Text                      Friendly Shortname ]
-        [ address       Text            Address (and port if not 80) ]
-        [ pubkey        Text                        Public Key (PEM) ]
-        [ seckey        Text                        Secret Key (PEM) ]
-        [ validfr       Text (Date)                  Valid From Date ]
-        [ validto       Text (Date)                    Valid To Date ]
-        [ advertise     Int  (Bool)               Advertise (Yes/No) ]
-        [ smtp          Int  (Bool)               SMTP Exit (Yes/No) ]
-        [ uptime        Int  (%)                  Uptime Reliability ]
-        [ latency       Int  (Mins)                          Latency ]
-        """
-        log.info('Creating DB table "keyring"')
-        exe('''CREATE TABLE keyring (keyid text, name text, address text,
-                                     pubkey text, seckey text, validfr text,
-                                     validto text, advertise int, smtp int,
-                                     uptime int, latency int,
-                                     UNIQUE (keyid))''')
+    def update(self):
+        # Stop advertising keys that expire in the next 28 days.
+        criteria = (timing.timestamp(timing.future(days=28)),)
+        exe('''UPDATE keyring SET advertise = 0
+               WHERE (? > validto OR uptime <= 0)
+               AND advertise AND seckey IS NOT NULL''', criteria)
+        # Delete any keys that have expired.
+        exe('DELETE FROM keyring WHERE datetime("now") > validto')
         con.commit()
+        return cur.rowcount
 
     def generate(self):
         log.info("Generating new RSA keys")
@@ -547,9 +594,9 @@ class Chain(Client):
         exit = nodes.pop()
         if exit == "*":
             exits = self.contenders(uptime=70, maxlat=2880, smtp=True)
-            # contenders is a list of exit remailers that don't conflict with any
-            # hardcoded remailers within the proximity of "distance".  Without
-            # this check, the exit remailer would be selected prior to
+            # contenders is a list of exit remailers that don't conflict with
+            # any hardcoded remailers within the proximity of "distance".
+            # Without this check, the exit remailer would be selected prior to
             # consideration of distance compliance.
             contenders = list(set(exits).difference(nodes[0 - distance:]))
             if len(contenders) == 0:

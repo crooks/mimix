@@ -75,9 +75,6 @@ def keyring_update(args):
             print k.conf_fetch(args.fetchurl)
         except keys.KeyImportError, e:
             sys.stderr.write("%s\n" % e)
-    if args.refresh:
-        count = k.update()
-        sys.stdout.write("Expired / Deleted %s keys\n" % count)
     if args.setexit:
         if not args.name:
             sys.stderr('Error: --setexit requires --name=remailer_name\n')
@@ -149,8 +146,6 @@ update = cmds.add_parser('update', help="Perform keyring updates")
 update.set_defaults(func=keyring_update)
 update.add_argument('--fetch', type=str, dest='fetchurl',
                     help="Fetch a remailer-conf from the specified address")
-update.add_argument('--refresh', dest='refresh', action='store_true',
-                    help="Delete expired keys")
 update.add_argument('--setexit', type=str, dest='setexit',
                     help="Toggle the exit status for the given address")
 update.add_argument('--name', type=str, dest='name',
