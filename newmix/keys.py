@@ -192,22 +192,26 @@ class Client(object):
         while True:
             updated = False
             for ar in all_remailers.keys():
-                if not all_remailers[ar]:
-                    all_remailers[ar] = True
-                    try:
-                        remailers = self.conf_fetch(ar)
-                    except KeyImportError:
-                        # During this phase, unavailable remailers can safely
-                        # be ignored.
+                if all_remailers[ar]:
+                    continue
+                # Regardless of success, we set this remailer as processed,
+                # otherwise we might infinite loop if it's unavailable.
+                all_remailers[ar] = True
+                try:
+                    remailers = self.conf_fetch(ar)
+                except KeyImportError:
+                    # During this phase, unavailable remailers can safely
+                    # be ignored.
+                    continue
+                for r in remailers:
+                    if r in all_remailers:
                         continue
-                    for r in remailers:
-                        if not r in all_remailers:
-                            # A new remailer is discovered.  This dictates
-                            # another iteration of all remailers.
-                            sys.stdout.write("%s reports unknown remailer at "
-                                             "%s\n" % (ar, r))
-                            updated = True
-                            all_remailers[r] = 0
+                    # A new remailer is discovered.  This dictates another
+                    # iteration of all remailers.
+                    sys.stdout.write("%s reports unknown remailer at %s\n"
+                                     % (ar, r))
+                    updated = True
+                    all_remailers[r] = False
             if not updated:
                 # During the last iteration of all_remailers, no new nodes
                 # were discovered.
