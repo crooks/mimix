@@ -177,6 +177,44 @@ class Client(object):
         con.commit()
         return cur.rowcount
 
+    def walk(self, address):
+        """
+        Start with a single remailer-conf page and fetch the details of its
+        local remailer.  This includes a list of other remailers known to that
+        remailer.  Each of these is fetched, along with its list of known
+        remailers.  Keep going until we no longer discover any new remailers.
+        """
+        all_remailers = {name:False for name in self.conf_fetch(address)}
+        sys.stdout.write("%s: Knew about %s remailers.\n"
+                         % (address, len(all_remailers)))
+        # This loop will continue until a remailer-conf is fetched that
+        # contains no remailers we don't already know about.
+        while True:
+            updated = False
+            for ar in all_remailers.keys():
+                if not all_remailers[ar]:
+                    all_remailers[ar] = True
+                    try:
+                        remailers = self.conf_fetch(ar)
+                    except KeyImportError:
+                        # During this phase, unavailable remailers can safely
+                        # be ignored.
+                        continue
+                    for r in remailers:
+                        if not r in all_remailers:
+                            # A new remailer is discovered.  This dictates
+                            # another iteration of all remailers.
+                            sys.stdout.write("%s reports unknown remailer at "
+                                             "%s\n" % (ar, r))
+                            updated = True
+                            all_remailers[r] = 0
+            if not updated:
+                # During the last iteration of all_remailers, no new nodes
+                # were discovered.
+                break
+        sys.stdout.write("Walk complete. %s remailers found.\n"
+                         % len(all_remailers))
+
     def conf_fetch(self, address):
         if '://' in address:
             address = address.split('://', 1)[1]
@@ -189,9 +227,11 @@ class Client(object):
         # Known Remailer List.  When processing reaches "Known remailers", the
         # subsequent lines should be known remailer addresses.
         krl = False
-        known_remailers = {}
+        known_remailers = []
         for line in conf_page.split("\n"):
-            if ": " in line:
+            if not line:
+                continue
+            if not krl and ": " in line:
                 key, val = line.split(": ", 1)
                 if key == "Valid From":
                     key = "validfr"
@@ -199,7 +239,7 @@ class Client(object):
                     key = "validto"
                 keys[key.lower()] = val
             elif krl and line not in known_remailers:
-                known_remailers[line] = 0
+                known_remailers.append(line)
             if line == 'Known remailers:-':
                 krl = True
         b = conf_page.rfind("-----BEGIN PUBLIC KEY-----")
@@ -279,9 +319,13 @@ class Client(object):
                       keys['pubkey'],
                       1,
                       keys['address'])
-            exe("""UPDATE keyring SET (name, keyid, validfr,
-                                       validto, smtp, pubkey, advertise)
-                                  VALUES (?,?,?,?,?,?,?)
+            exe("""UPDATE keyring SET name = ?,
+                                      keyid = ?,
+                                      validfr = ?,
+                                      validto = ?,
+                                      smtp = ?,
+                                      pubkey = ?,
+                                      advertise = ?
                                   WHERE address = ?""", values)
         else:
             raise AssertionError("More than one record for supplied address")
@@ -531,7 +575,6 @@ class Keystore(Client):
         if 'keyid' not in keys:
             raise KeyImportError("KeyID not published")
         if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
-            print hashlib.md5(keys['pubkey']).hexdigest()
             raise KeyImportError("Key digest error")
         # Convert keys to an ordered tuple, ready for a DB insert.
         try:

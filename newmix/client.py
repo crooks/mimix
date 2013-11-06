@@ -71,10 +71,16 @@ def send_msg(args):
 
 def keyring_update(args):
     if args.fetchurl:
-        try:
-            print k.conf_fetch(args.fetchurl)
-        except keys.KeyImportError, e:
-            sys.stderr.write("%s\n" % e)
+        if args.walk:
+            try:
+                k.walk(args.fetchurl)
+            except keys.KeyImportError, e:
+                sys.stderr.write("%s\n" % e)
+        else:
+            try:
+                k.conf_fetch(args.fetchurl)
+            except keys.KeyImportError, e:
+                sys.stderr.write("%s\n" % e)
     if args.setexit:
         if not args.name:
             sys.stderr('Error: --setexit requires --name=remailer_name\n')
@@ -97,6 +103,8 @@ def keyring_update(args):
         if not args.name:
             sys.stderr.write("Error: --uptime requires "
                              "--name=remailer_name\n")
+        elif args.uptime < 0 or args.uptime > 100:
+            sys.stderr.write("Uptime must be in the range 0-100\n")
         else:
             count = k.set_uptime(args.name, args.uptime)
             if count > 0:
@@ -146,12 +154,15 @@ update = cmds.add_parser('update', help="Perform keyring updates")
 update.set_defaults(func=keyring_update)
 update.add_argument('--fetch', type=str, dest='fetchurl',
                     help="Fetch a remailer-conf from the specified address")
-update.add_argument('--setexit', type=str, dest='setexit',
-                    help="Toggle the exit status for the given address")
+update.add_argument('--walk', dest='walk', action='store_true',
+                    help="Follow known_remailer trail to fetch all known "
+                         "remailers")
 update.add_argument('--name', type=str, dest='name',
                     help="Specify a remailer name")
+update.add_argument('--setexit', type=str, dest='setexit',
+                    help="Toggle the exit status for the given name")
 update.add_argument('--uptime', type=int, dest='uptime',
-                    help=("Manually set the uptime stats for the specified"
+                    help=("Manually set the uptime stats for the specified "
                           "remailer name"))
 update.add_argument('--latency', type=int, dest='latency',
                     help=("Manually set the latency time for the specified "
