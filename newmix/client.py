@@ -47,7 +47,6 @@ def send_msg(args):
         msg = tohead + msg
 
     # Encode the message
-    k = keys.Keystore()
     m = mix.Message(k)
     m.new(msg, c)
 
@@ -83,10 +82,11 @@ def keyring_update(args):
                 sys.stderr.write("%s\n" % e)
     if args.setexit:
         if not args.name:
-            sys.stderr('Error: --setexit requires --name=remailer_name\n')
+            sys.stderr.write('Error: --setexit requires '
+                             '--name=remailer_name\n')
         else:
             sys.stdout.write("Toggled %s exit status for remailer: %s\n"
-                             % (k.toggle_exit(args.setexit), args.setexit))
+                             % (k.toggle_exit(args.name), args.name))
     if args.latency:
         if not args.name:
             sys.stderr.write("Error: --latency requires "
@@ -159,7 +159,7 @@ update.add_argument('--walk', dest='walk', action='store_true',
                          "remailers")
 update.add_argument('--name', type=str, dest='name',
                     help="Specify a remailer name")
-update.add_argument('--setexit', type=str, dest='setexit',
+update.add_argument('--setexit', dest='setexit', action='store_true',
                     help="Toggle the exit status for the given name")
 update.add_argument('--uptime', type=int, dest='uptime',
                     help=("Manually set the uptime stats for the specified "

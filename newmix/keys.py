@@ -76,6 +76,20 @@ class Client(object):
                                      UNIQUE (keyid))''')
         con.commit()
 
+    def get_public(self, name):
+        """ Public keys are only used during encoding operations (client mode
+            and random hops).  Performance is not important so no caching is
+            performed.  The KeyID is required as it's encoded in the message
+            so the recipient remailer knows which key to use for decryption.
+        """
+        exe("""SELECT keyid,address,pubkey FROM keyring
+                                   WHERE name=? AND advertise""", (name,))
+        data = cur.fetchone()
+        if data is None:
+            raise KeystoreError("%s: Unknown remailer name" % name)
+        else:
+            return (data[0], data[1], RSA.importKey(data[2]))
+
     def booltext(self, boolean):
         if boolean:
             return "Yes"
@@ -337,16 +351,13 @@ class Client(object):
         return known_remailers
 
 
-class Keystore(Client):
+class Server(Client):
     """
     """
     def __init__(self):
-        log.info("Initializing Keystore")
-        exe("""SELECT name FROM sqlite_master
-               WHERE type='table' AND name='keyring'""")
-        if cur.fetchone() is None:
-            self.create_keyring()
+        log.info("Initializing Remailer Keystore")
         # On startup, force a daily run
+        self.daily_trigger = timing.epoch_days()
         self.daily_events(force=True)
 
     def update(self):
@@ -355,10 +366,16 @@ class Keystore(Client):
         exe('''UPDATE keyring SET advertise = 0
                WHERE (? > validto OR uptime <= 0)
                AND advertise AND seckey IS NOT NULL''', criteria)
+        expired = cur.rowcount
+        if expired > 0:
+            log.info("Expired %s remailer keys", expired)
         # Delete any keys that have expired.
         exe('DELETE FROM keyring WHERE datetime("now") > validto')
+        deleted = cur.rowcount
+        if deleted > 0:
+            log.info("Deleted %s expired remailer keys", deleted)
         con.commit()
-        return cur.rowcount
+        
 
     def generate(self):
         log.info("Generating new RSA keys")
@@ -436,26 +453,18 @@ class Keystore(Client):
             log.info("Forced run of daily housekeeping actions.")
         else:
             log.info("Running routine daily housekeeping actions.")
-
-        # Stop advertising keys that expire in the next 28 days.
-        criteria = (timing.timestamp(timing.future(days=28)),)
-        exe('''UPDATE keyring SET advertise = 0
-               WHERE (? > validto OR uptime <= 0)
-               AND advertise''', criteria)
-        # Delete any keys that have expired.
-        exe('DELETE FROM keyring WHERE datetime("now") > validto')
-        con.commit()
-
+        # Unadvertise and delete expired keys.
+        self.update()
         # If any seckeys expired, it's likely a new key will be needed.  Check
         # what key should be advertised and advertise it.
         self.key_to_advertise()
-
+        # Secret keys are cached when running as a remailer.  This is because
+        # the key is required to delete every received message.
         self.sec_cache = {}
-
         # This is a list of known remailer addresses.  It's referenced each
         # time this remailer functions as an Intermediate Hop.  The message
         # contains the address of the next_hop and this list confirms that
-        # is a known remailer.
+        # address is a known remailer.
         self.known_addresses = self.all_remailers_by_address()
         # Reset the fetch cache.  This cache prevents repeated http GET
         # requests being sent to dead or never there remailers.
@@ -463,20 +472,6 @@ class Keystore(Client):
 
         # Set the daily trigger to today's date.
         self.daily_trigger = timing.epoch_days()
-
-    def get_public(self, name):
-        """ Public keys are only used during encoding operations (client mode
-            and random hops).  Performance is not important so no caching is
-            performed.  The KeyID is required as it's encoded in the message
-            so the recipient remailer knows which key to use for decryption.
-        """
-        exe("""SELECT keyid,address,pubkey FROM keyring
-                                   WHERE name=? AND advertise""", (name,))
-        data = cur.fetchone()
-        if data is None:
-            raise KeystoreError("%s: Unknown remailer name" % name)
-        else:
-            return (data[0], data[1], RSA.importKey(data[2]))
 
     def get_secret(self, keyid):
         """ Return the Secret Key object associated with the keyid provided.
@@ -488,7 +483,7 @@ class Keystore(Client):
         log.debug("Seckey cache miss for %s", keyid)
         exe('SELECT seckey FROM keyring WHERE keyid=?', (keyid,))
         data = cur.fetchone()
-        if data[0] is None:
+        if data is None or data[0] is None:
             return None
         self.sec_cache[keyid] = RSA.importKey(data[0])
         log.debug("Got seckey from DB")
@@ -522,11 +517,15 @@ class Keystore(Client):
             f.write("%s\n" % row)
         f.close()
 
-    def conf_fetch(self, address):
-        if address.startswith("http://"):
-            log.warn('Address %s should not be prefixed with "http://"',
-                     address)
-            address = address[7:]
+    def middle_spy(self, address):
+        """
+        An active remailer sees the addresses of next-hop remailers.  This
+        function checks if each address is known to this remailer.  If not,
+        steps are taken to find out about it.
+        """
+        if '://' in address:
+            address = address.split('://', 1)[1]
+
         # If the address is unknown, steps are taken to find out about it.
         if address in self.known_addresses:
             return 0
@@ -538,67 +537,8 @@ class Keystore(Client):
             raise KeyImportError("URL retrieval already attempted today")
         self.fetch_cache.append(address)
 
-        #TODO At this point, fetch a URL
-        log.debug("Attempting to fetch remailer-conf for %s", address)
-        conf_page = http.get("http://%s/remailer-conf.txt" % address)
-        if conf_page is None:
-            raise KeyImportError("Could not retreive remailer-conf for %s"
-                                 % address)
-        keys = {}
-        for line in conf_page.split("\n"):
-            if ": " in line:
-                key, val = line.split(": ", 1)
-                if key == "Valid From":
-                    key = "validfr"
-                elif key == "Valid To":
-                    key = "validto"
-                keys[key.lower()] = val
-        b = conf_page.rfind("-----BEGIN PUBLIC KEY-----")
-        e = conf_page.rfind("-----END PUBLIC KEY-----")
-        if b >= 0 and e >= 0:
-            keys['pubkey'] = conf_page[b:e + 24]
-        else:
-            # Can't import a remailer without a pubkey
-            raise KeyImportError("Public key not found")
-        try:
-            test = RSA.importKey(keys['pubkey'])
-        except ValueError:
-            raise KeyImportError("Public key is not valid")
-
-        # Date validation section
-        try:
-            if not 'validfr' in keys or not 'validto' in keys:
-                raise KeyImportError("Validity period not defined")
-            if timing.dateobj(keys['validfr']) > timing.now():
-                raise KeyImportError("Key is not yet valid")
-            if timing.dateobj(keys['validto']) < timing.now():
-                raise KeyImportError("Key has expired")
-        except ValueError:
-            raise KeyImportError("Invalid date format")
-        # The KeyID should always be the MD5 hash of the Pubkey.
-        if 'keyid' not in keys:
-            raise KeyImportError("KeyID not published")
-        if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
-            raise KeyImportError("Key digest error")
-        # Convert keys to an ordered tuple, ready for a DB insert.
-        try:
-            insert = (keys['name'],
-                      keys['address'],
-                      keys['keyid'],
-                      keys['validfr'],
-                      keys['validto'],
-                      self.textbool(keys['smtp']),
-                      keys['pubkey'],
-                      1)
-        except KeyError:
-            # We need all the above keys to perform a valid import
-            raise KeyImportError("Import Tuple construction failed")
-        exe("""INSERT INTO keyring (name, address, keyid, validfr, validto,
-                                    smtp, pubkey, advertise)
-                           VALUES (?,?,?,?,?,?,?,?)""", insert)
-        con.commit()
+        self.conf_fetch(address)
         self.known_addresses.append(address)
-        return keys['keyid'], keys['pubkey']
 
 
 class Chain(Client):

@@ -73,7 +73,12 @@ def process_inbound():
                 in_pool.delete(filename)
                 continue
             # Process the Base64 component of the message.
-            m.decode(packet_data['binary'])
+            try:
+                m.decode(packet_data['binary'])
+            except mix.PacketError, e:
+                log.debug("Decoding failed with: %s", e)
+                in_pool.delete(filename)
+                continue
             if m.is_exit:
                 sendmail.parse_txt(m.text)
             else:
@@ -140,7 +145,7 @@ if (__name__ == "__main__"):
     #handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    k = keys.Keystore()
+    k = keys.Server()
     # The inbound pool always processes every message.
     in_pool = Pool.Pool(name='inpool',
                         pooldir=config.get('pool', 'indir'))
