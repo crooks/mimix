@@ -40,7 +40,7 @@ class ChainError(Exception):
     pass
 
 
-class KeyFuncs(object):
+class Client(object):
     def booltext(self, boolean):
         if boolean:
             return "Yes"
@@ -68,10 +68,10 @@ class KeyFuncs(object):
         Return a list of all known remailers (with public keys).
         If smtp is True, only exit-type remailers will be included.
         """
-        insert = (smtp,)
+        criteria = (smtp,)
         exe("""SELECT name FROM keyring
                WHERE pubkey IS NOT NULL AND (smtp OR smtp=?)
-               AND advertise""", insert)
+               AND advertise""", criteria)
         data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
@@ -81,10 +81,10 @@ class KeyFuncs(object):
         Return a list of all known remailers (with public keys).
         If smtp is True, only exit-type remailers will be included.
         """
-        insert = (smtp,)
+        criteria = (smtp,)
         exe("""SELECT address FROM keyring
                WHERE pubkey IS NOT NULL AND (smtp OR smtp=?)
-               AND advertise""", insert)
+               AND advertise""", criteria)
         data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
@@ -114,6 +114,12 @@ class KeyFuncs(object):
     def delete_address(self, address):
         criteria = (address,)
         exe("DELETE FROM keyring WHERE address = ?", criteria)
+        con.commit()
+        return cur.rowcount
+
+    def delete_name(self, name):
+        criteria = (name,)
+        exe("DELETE FROM keyring WHERE name = ?", criteria)
         con.commit()
         return cur.rowcount
 
@@ -203,40 +209,28 @@ class KeyFuncs(object):
         # Convert keys to an ordered tuple, ready for a DB insert/update.
         try:
             values = (keys['name'],
+                      keys['address'],
                       keys['keyid'],
                       keys['validfr'],
                       keys['validto'],
                       self.textbool(keys['smtp']),
                       keys['pubkey'],
-                      1,
-                      keys['address'])
+                      1)
         except KeyError:
             # We need all the above keys to perform a valid import
             raise KeyImportError("Import Tuple construction failed")
-        while True:
-            count = self.count_addresses(keys['address'])
-            if count <= 1:
-                break
-            self.delete_address(keys['address'])
-        if count == 0:
-            exe("""INSERT INTO keyring (name, keyid, validfr, validto, smtp,
-                                        pubkey, advertise, address)
-                               VALUES (?,?,?,?,?,?,?,?)""", values)
-        elif count == 1:
-            exe("""UPDATE keyring set (name, keyid, validfr, validto, smtp,
-                                       pubkey, advertise)
-                          VALUES (?,?,?,?,?,?,?) WHERE address = ?""", values)
-        con.commit()
-        return known_remailers
-
-    def db_insert(self, values):
+        # Having got this far into the fetch process, confidence is high that
+        # we have imported valid key data.  The next step is to delete any
+        # existing data for that address and replace it.
+        self.delete_address(keys['address'])
         exe("""INSERT INTO keyring (name, address, keyid, validfr, validto,
                                     smtp, pubkey, advertise)
                            VALUES (?,?,?,?,?,?,?,?)""", values)
         con.commit()
+        return known_remailers
         
 
-class Keystore(KeyFuncs):
+class Keystore(Client):
     """
     """
     def __init__(self):
@@ -513,7 +507,7 @@ class Keystore(KeyFuncs):
         return keys['keyid'], keys['pubkey']
 
 
-class Chain(KeyFuncs):
+class Chain(Client):
     """
     """
     def contenders(self,
@@ -605,7 +599,7 @@ class Chain(KeyFuncs):
         return chain
 
 
-class Pinger(KeyFuncs):
+class Pinger(Client):
     def decrement_uptime(address, step):
         criteria = (step, address)
         exe("""UPDATE keyring SET uptime = uptime - ?

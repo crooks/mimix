@@ -68,6 +68,7 @@ def send_msg(args):
             #TODO Mark down remailer statistics.
             sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
 
+
 def keyring_update(args):
     if args.fetchurl:
         try:
@@ -107,6 +108,7 @@ def keyring_update(args):
             else:
                 sys.stderr.write("Uptime not updated for any remailers\n")
 
+
 def remailer_info(args):
     if args.listkeys:
         for row in k.list_remailers(smtp=args.exitonly):
@@ -115,15 +117,18 @@ def remailer_info(args):
         for row in k.list_stats(smtp=args.exitonly):
             sys.stdout.write('%-14s %-30s %s%% %s:%02d\n' % row)
 
+
 def remailer_delete(args):
     if args.keyid:
         count = k.delete_keyid(args.keyid)
     elif args.address:
         count = k.delete_address(args.address)
-    
+    elif args.name:
+        count = k.delete_name(args.name)
+
     sys.stdout.write("Deleted %s entries\n" % count)
 
-k = keys.KeyFuncs()
+k = keys.Client()
 chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Newmix Client')
 cmds = parser.add_subparsers(help='Commands')
@@ -134,7 +139,7 @@ send.add_argument('--file', type=str, dest='filename',
                   help="Read source message from a file")
 send.add_argument('--stdout', dest='stdout', action='store_true',
                   help=("Write a newmix message to stdout instead of "
-                          "sending it to the first hop."))
+                        "sending it to the first hop."))
 send.add_argument('--chain', type=str, dest='chainstr',
                   help="Define the Chain a message should use.")
 send.add_argument('--recipient', type=str, dest='recipient',
@@ -171,9 +176,11 @@ delete = cmds.add_parser('delete', help="Delete remailers")
 delete.set_defaults(func=remailer_delete)
 delgroup = delete.add_mutually_exclusive_group(required=True)
 delgroup.add_argument('--keyid', type=str, dest='keyid',
-                    help="Delete remailers by keyid")
+                      help="Delete remailers by keyid")
 delgroup.add_argument('--address', type=str, dest='address',
-                    help="Delete remailers by address")
+                      help="Delete remailers by address")
+delgroup.add_argument('--name', type=str, dest='name',
+                      help="Delete remailers by short name")
 
 args = parser.parse_args()
 args.func(args)
