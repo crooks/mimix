@@ -352,7 +352,7 @@ class Server(Client):
     """
     """
     def __init__(self):
-        log.info("Initializing Remailer Keystore")
+        super(Server, self).__init__()
         # On startup, force a daily run
         self.daily_trigger = timing.epoch_days()
         self.daily_events(force=True)
