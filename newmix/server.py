@@ -132,7 +132,7 @@ def process_outbound():
         try:
             # Actually try to send the message to the next_hop.  There are
             # probably a lot of failure conditions to handle at this point.
-            recipient = 'http://%s/collector.py/msg' % packet_data['next_hop']
+            recipient = '%s/collector.py/msg' % packet_data['next_hop']
             r = requests.post(recipient, data=payload)
             if r.status_code == requests.codes.ok:
                 out_pool.delete(filename)

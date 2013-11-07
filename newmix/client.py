@@ -54,7 +54,7 @@ def send_msg(args):
         sys.stdout.write(m.text())
     else:
         payload = {'base64': m.text()}
-        url = 'http://%s/collector.py/msg' % m.next_hop
+        url = '%s/collector.py/msg' % m.next_hop
         try:
             # Send the message to the first hop.
             r = requests.post(url, data=payload)
