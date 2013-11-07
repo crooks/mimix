@@ -567,7 +567,7 @@ class Chain(Client):
         creation (see 'distance' parameter).  From that point, the chain is
         constructed in reverse.
         """
-        distance = config.get('chain', 'distance')
+        distance = config.getint('chain', 'distance')
         # nodes is a list of each link in the chain.  Each link can either be
         # randomly selected (Depicted by an '*' or hardcoded (by remailer
         # address).
