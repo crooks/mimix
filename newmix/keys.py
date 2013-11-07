@@ -234,10 +234,7 @@ class Client(object):
                          % len(all_remailers))
 
     def conf_fetch(self, address):
-        if '://' in address:
-            address = address.split('://', 1)[1]
-
-        conf_page = http.get("http://%s/remailer-conf.txt" % address)
+        conf_page = http.get("%s/remailer-conf.txt" % address)
         if conf_page is None:
             raise KeyImportError("Could not retreive remailer-conf for %s"
                                  % address)
@@ -400,7 +397,7 @@ class Server(Client):
                                     uptime, latency)
                            VALUES (?,?,?,?,?,?,?,?,?,?,?)''', insert)
         con.commit()
-        return str(keyid)
+        return (str(keyid), seckey)
 
     def test_load(self):
         for n in range(0, 10):
@@ -426,19 +423,19 @@ class Server(Client):
         con.commit()
 
     def key_to_advertise(self):
-        while True:
-            exe('''SELECT keyid,seckey FROM keyring
-                                       WHERE seckey IS NOT NULL
-                                       AND validfr <= datetime('now')
-                                       AND datetime('now') <= validto
-                                       AND advertise''')
-            data = cur.fetchone()
-            if data is None:
-                self.generate()
-            else:
-                break
-        self.mykey = (data[0], RSA.importKey(data[1]))
-        log.info("Advertising KeyID: %s", data[0])
+        exe('''SELECT keyid,seckey FROM keyring
+                                   WHERE seckey IS NOT NULL
+                                   AND validfr <= datetime('now')
+                                   AND datetime('now') <= validto
+                                   AND advertise''')
+        data = cur.fetchone()
+        if data is None:
+            mykey = self.generate()
+            log.info("Advertising new Key: %s", mykey[0])
+        else:
+            mykey = (data[0], RSA.importKey(data[1]))
+            log.info("Advertising KeyID: %s", mykey[0])
+        self.mykey = mykey
         self.advertise()
 
     def daily_events(self, force=False):
@@ -523,9 +520,6 @@ class Server(Client):
         function checks if each address is known to this remailer.  If not,
         steps are taken to find out about it.
         """
-        if '://' in address:
-            address = address.split('://', 1)[1]
-
         # If the address is unknown, steps are taken to find out about it.
         if address in self.known_addresses:
             return 0
@@ -580,7 +574,7 @@ class Chain(Client):
         nodes = [n.strip() for n in chainstr.split(',')]
         exit = nodes.pop()
         if exit == "*":
-            exits = self.contenders(uptime=70, maxlat=2880, smtp=True)
+            exits = self.contenders(smtp=True)
             # contenders is a list of exit remailers that don't conflict with
             # any hardcoded remailers within the proximity of "distance".
             # Without this check, the exit remailer would be selected prior to
@@ -604,7 +598,7 @@ class Chain(Client):
         # All remailers is used to check that hardcoded links are all known
         # remailers.
         all_remailers = self.all_remailers_by_name()
-        remailers = self.contenders(uptime=50, maxlat=2880)
+        remailers = self.contenders()
         # If processing reaches this point, at least one remailer (besides an
         # exit) is required.  If we have none to choose from, raise an error.
         if len(remailers) == 0:

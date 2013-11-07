@@ -31,8 +31,8 @@ config = ConfigParser.RawConfigParser()
 
 homedir = os.path.expanduser('~')
 config.add_section('general')
-config.set('general', 'name', 'noname')
-config.set('general', 'address', 'nothing.onion')
+#config.set('general', 'name', 'noname')
+#config.set('general', 'address', 'http://nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
 config.set('general', 'pidfile', os.path.join(homedir, 'newmix', 'newmix.pid'))
@@ -77,7 +77,7 @@ if os.path.isfile(configfile):
     config.read(configfile)
 
 else:
-    sys.stdout.write("No configuration file found.\nThe expected "
+    sys.stderr.write("No configuration file found.\nThe expected "
                      "location is %s.  This can be overridden by defining "
                      "the NEWMIX environment variable.\n" % configfile)
     sys.exit(1)
@@ -85,7 +85,3 @@ else:
 if config.get('general', 'address').endswith('/'):
     config.set('general', 'address', config.get('general',
                                                 'address').rstrip('/'))
-if config.get('general', 'address').startswith('http://'):
-    config.set('general', 'address', config.get('general',
-                                                'address')[7:])
-

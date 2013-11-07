@@ -37,6 +37,8 @@ from Crypto import Random
 
 class Server(Daemon):
     def run(self):
+        if not self.validity_check():
+            sys.exit(1)
         Random.atfork()
         # Loop until a SIGTERM or Ctrl-C is received.
         while True:
@@ -50,6 +52,17 @@ class Server(Daemon):
             # Some consideration should probably given to pool trigger times
             # rather than stubbornly looping every minute.
             timing.sleep(60)
+
+    def validity_check(self):
+        if not config.has_option('general', 'name'):
+            sys.stderr.write("Unable to start server: Remailer name is not "
+                             "defined.\n")
+            return False
+        if not config.has_option('general', 'address'):
+            sys.stderr.write("Unable to start server: Remailer address is "
+                             "not defined.\n")
+            return False
+        return True
 
 
 def process_inbound():
