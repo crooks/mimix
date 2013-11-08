@@ -649,7 +649,9 @@ class Pinger(Client):
         return [e[column] for e in data]
 
 
-con = sqlite3.connect(config.get('general', 'dbfile'))
+dbfile = os.path.join(config.get('general', 'dbdir'),
+                      config.get('general', 'dbfile'))
+con = sqlite3.connect(dbfile)
 con.text_factory = str
 cur = con.cursor()
 exe = cur.execute
@@ -661,9 +663,7 @@ if (__name__ == "__main__"):
                  'warn': logging.WARN, 'error': logging.ERROR}
     log = logging.getLogger("mimix")
     log.setLevel(loglevels[config.get('logging', 'level')])
-    filename = os.path.join(config.get('logging', 'path'), 'mimix.log')
     handler = logging.StreamHandler()
-    #handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
     ks = Keystore()

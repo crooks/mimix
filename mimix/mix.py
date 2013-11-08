@@ -2,10 +2,9 @@
 #
 # vim: tabstop=4 expandtab shiftwidth=4 noautoindent
 #
-# nymserv.py - A Basic Nymserver for delivering messages to a shared mailbox
-# such as alt.anonymous.messages.
+# mix.py - Packet encoder/decoder for Mimix
 #
-# Copyright (C) 2012 Steve Crook <steve@mixmin.net>
+# Copyright (C) 2013 Steve Crook <steve@mixmin.net>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by the
@@ -399,24 +398,14 @@ class Message():
         return key, value.strip()
 
 
-def new_msg():
-    import keys
-    chain = keys.Chain()
-    k = keys.Keystore()
-    message = Message(k)
-    c = chain.create()
-    print c
-    plain_text = "This is a test message\n" * 10
-    message.new(plain_text, c)
-    out_pool = Pool.Pool(name = 'mixpool',
-                         pooldir = config.get('pool', 'outdir'))
-    out_pool.packet_write(message)
-
-
 log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
+    logfmt = config.get('logging', 'format')
+    datefmt = config.get('logging', 'datefmt')
+    loglevels = {'debug': logging.DEBUG, 'info': logging.INFO,
+                 'warn': logging.WARN, 'error': logging.ERROR}
     log = logging.getLogger("mimix")
-    log.setLevel(logging.DEBUG)
+    log.setLevel(loglevels[config.get('logging', 'level')])
     handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    new_msg()

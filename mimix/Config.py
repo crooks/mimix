@@ -2,7 +2,7 @@
 #
 # vim: tabstop=4 expandtab shiftwidth=4 noautoindent
 #
-# pymaster.py - A Python version of the Mixmaster Remailer
+# Config.py - Configuration parser for the Mimix Remailer
 #
 # Copyright (C) 2013 Steve Crook <steve@mixmin.net>
 #
@@ -26,18 +26,31 @@ import sys
 
 WRITE_DEFAULT_CONFIG = False
 
+
+def mkdir(d):
+    if not os.path.isdir(d):
+        os.mkdir(d, 0700)
+        sys.stdout.write("%s: Created directory\n" % d)
+
+def dir_exists(d):
+    if not os.path.isdir(d):
+        sys.stderr.write("WARNING: %s does not exist\n" % d)
+
 # Configure the Config Parser.
 config = ConfigParser.RawConfigParser()
 
 homedir = os.path.expanduser('~')
+basedir = os.path.join(homedir, 'mimix')
+
 config.add_section('general')
 #config.set('general', 'name', 'noname')
 #config.set('general', 'address', 'http://nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
-config.set('general', 'pidfile', os.path.join(homedir, 'mimix', 'mimix.pid'))
-config.set('general', 'dbfile', os.path.join(homedir, 'mimix',
-                                             'directory.db'))
+config.set('general', 'piddir', os.path.join(basedir, 'run'))
+config.set('general', 'pidfile', 'mimix.pid')
+config.set('general', 'dbdir', os.path.join(basedir, 'db'))
+config.set('general', 'dbfile', 'directory.db')
 config.set('general', 'version', '0.1-alpha1')
 
 config.add_section('chain')
@@ -48,7 +61,8 @@ config.set('chain', 'minlat', 0)
 config.set('chain', 'distance', 3)
 
 config.add_section('logging')
-config.set('logging', 'path', os.path.join(homedir, 'mimix', 'log'))
+config.set('logging', 'dir', os.path.join(basedir, 'log'))
+config.set('logging', 'file', 'mimix.log')
 config.set('logging', 'level', 'info')
 config.set('logging', 'format',
            '%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -56,10 +70,8 @@ config.set('logging', 'datefmt', '%Y-%m-%d %H:%M:%S')
 config.set('logging', 'retain', 7)
 
 config.add_section('pool')
-config.set('pool', 'indir', os.path.join(homedir, 'mimix',
-           'inbound_pool'))
-config.set('pool', 'outdir', os.path.join(homedir, 'mimix',
-           'outbound_pool'))
+config.set('pool', 'indir', os.path.join(basedir, 'inbound_pool'))
+config.set('pool', 'outdir', os.path.join(basedir, 'outbound_pool'))
 config.set('pool', 'size', 45)
 config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')
@@ -85,3 +97,11 @@ else:
 if config.get('general', 'address').endswith('/'):
     config.set('general', 'address', config.get('general',
                                                 'address').rstrip('/'))
+# Make required directories
+mkdir(basedir)
+mkdir(config.get('general', 'piddir'))
+mkdir(config.get('general', 'dbdir'))
+mkdir(config.get('logging', 'dir'))
+mkdir(config.get('pool', 'indir'))
+mkdir(config.get('pool', 'outdir'))
+dir_exists(config.get('http', 'wwwdir'))

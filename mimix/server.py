@@ -153,7 +153,8 @@ if (__name__ == "__main__"):
                  'warn': logging.WARN, 'error': logging.ERROR}
     log = logging.getLogger("mimix")
     log.setLevel(loglevels[config.get('logging', 'level')])
-    filename = os.path.join(config.get('logging', 'path'), 'mimix.log')
+    filename = os.path.join(config.get('logging', 'dir'),
+                            config.get('logging', 'file'))
     handler = logging.StreamHandler()
     #handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
@@ -167,8 +168,10 @@ if (__name__ == "__main__"):
                          interval=config.get('pool', 'interval'),
                          rate=config.getint('pool', 'rate'),
                          size=config.getint('pool', 'size'))
-    s = Server(config.get('general', 'pidfile'),
-               stderr='/home/crooks/mimix/log/err.log')
+    pidfile = os.path.join(config.get('general', 'piddir'),
+                           config.get('general', 'pidfile'))
+    errlog = os.path.join(config.get('logging', 'dir'), 'err.log')
+    s = Server(pidfile, stderr=errlog)
 
     # Handle command line args
     if len(sys.argv) >= 1:
