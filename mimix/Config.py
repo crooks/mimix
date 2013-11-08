@@ -32,9 +32,11 @@ def mkdir(d):
         os.mkdir(d, 0700)
         sys.stdout.write("%s: Created directory\n" % d)
 
+
 def dir_exists(d):
     if not os.path.isdir(d):
         sys.stderr.write("WARNING: %s does not exist\n" % d)
+
 
 # Configure the Config Parser.
 config = ConfigParser.RawConfigParser()
@@ -79,6 +81,12 @@ config.set('pool', 'expire', 7)
 
 config.add_section('http')
 config.set('http', 'wwwdir', os.path.join(homedir, 'apache', 'www'))
+
+if WRITE_DEFAULT_CONFIG:
+    with open('sample.cfg', 'w') as c:
+        config.write(c)
+        sys.exit(0)
+
 # Try and process the .mimixrc file.  If it doesn't exist, we
 # bailout as some options are compulsory.
 if 'MIMIX' in os.environ:
@@ -99,9 +107,12 @@ if config.get('general', 'address').endswith('/'):
                                                 'address').rstrip('/'))
 # Make required directories
 mkdir(basedir)
-mkdir(config.get('general', 'piddir'))
 mkdir(config.get('general', 'dbdir'))
-mkdir(config.get('logging', 'dir'))
-mkdir(config.get('pool', 'indir'))
-mkdir(config.get('pool', 'outdir'))
-dir_exists(config.get('http', 'wwwdir'))
+if config.has_option('general', 'address'):
+    # If an address is set, the assumption is made that this node will run as
+    # a server.
+    mkdir(config.get('general', 'piddir'))
+    mkdir(config.get('logging', 'dir'))
+    mkdir(config.get('pool', 'indir'))
+    mkdir(config.get('pool', 'outdir'))
+    dir_exists(config.get('http', 'wwwdir'))
