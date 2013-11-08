@@ -82,7 +82,7 @@ def process_inbound():
                 # ValueError is returned when the packet being processed isn't
                 # compliant with the specification.  These messages are
                 # deleted without further consideration.
-                log.debug("Newmix packet read failed with: %s", e)
+                log.debug("Mimix packet read failed with: %s", e)
                 in_pool.delete(filename)
                 continue
             # Process the Base64 component of the message.
@@ -114,7 +114,7 @@ def process_outbound():
             try:
                 packet_data = m.packet_read(f.read())
             except ValueError, e:
-                log.debug("Newmix packet read failed with: %s", e)
+                log.debug("Mimix packet read failed with: %s", e)
                 out_pool.delete(filename)
                 continue
         if packet_data['expire'] < timing.epoch_days():
@@ -145,15 +145,15 @@ def process_outbound():
             log.info("Unable to connect to %s.  Will keep trying.", recipient)
 
 
-log = logging.getLogger("newmix.%s" % __name__)
+log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
     logfmt = config.get('logging', 'format')
     datefmt = config.get('logging', 'datefmt')
     loglevels = {'debug': logging.DEBUG, 'info': logging.INFO,
                  'warn': logging.WARN, 'error': logging.ERROR}
-    log = logging.getLogger("newmix")
+    log = logging.getLogger("mimix")
     log.setLevel(loglevels[config.get('logging', 'level')])
-    filename = os.path.join(config.get('logging', 'path'), 'newmix.log')
+    filename = os.path.join(config.get('logging', 'path'), 'mimix.log')
     handler = logging.StreamHandler()
     #handler = logging.FileHandler(filename, mode='a')
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
@@ -168,7 +168,7 @@ if (__name__ == "__main__"):
                          rate=config.getint('pool', 'rate'),
                          size=config.getint('pool', 'size'))
     s = Server(config.get('general', 'pidfile'),
-               stderr='/home/crooks/newmix/log/err.log')
+               stderr='/home/crooks/mimix/log/err.log')
 
     # Handle command line args
     if len(sys.argv) >= 1:

@@ -2,7 +2,7 @@
 #
 # vim: tabstop=4 expandtab shiftwidth=4 noautoindent
 #
-# webcgi.py - CGI file for storing Newmix messages in a Pool
+# webcgi.py - CGI file for storing Mimix messages in a Pool
 #
 # Copyright (C) 2013 Steve Crook <steve@mixmin.net>
 #
@@ -26,14 +26,14 @@ from Crypto import Random
 def msg(req, base64):
     if base64 is None:
         return "Invalid submission\n";
-    if '-----BEGIN NEWMIX MESSAGE-----' in base64:
+    if '-----BEGIN MIMIX MESSAGE-----' in base64:
         while True:
-            fn = os.path.join('/home/crooks/newmix/inbound_pool',
+            fn = os.path.join('/home/crooks/mimix/inbound_pool',
                              'm' + Random.new().read(4).encode('hex'))
             if not os.path.isfile(fn):
                 break
         with open(fn, 'w') as f:
             f.write(base64)
-        return "Newmix message submitted";
+        return "Mimix message submitted";
     else:
         return "Invalid submission\n";

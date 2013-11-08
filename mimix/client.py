@@ -135,7 +135,7 @@ def remailer_delete(args):
 
 k = keys.Client()
 chain = keys.Chain()
-parser = argparse.ArgumentParser(description='Newmix Client')
+parser = argparse.ArgumentParser(description='Mimix Client')
 cmds = parser.add_subparsers(help='Commands')
 
 send = cmds.add_parser('send', help="Send a message")
@@ -143,7 +143,7 @@ send.set_defaults(func=send_msg)
 send.add_argument('--file', type=str, dest='filename',
                   help="Read source message from a file")
 send.add_argument('--stdout', dest='stdout', action='store_true',
-                  help=("Write a newmix message to stdout instead of "
+                  help=("Write a mimix message to stdout instead of "
                         "sending it to the first hop."))
 send.add_argument('--chain', type=str, dest='chainstr',
                   help="Define the Chain a message should use.")

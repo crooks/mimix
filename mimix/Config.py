@@ -35,8 +35,8 @@ config.add_section('general')
 #config.set('general', 'address', 'http://nothing.onion')
 config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
-config.set('general', 'pidfile', os.path.join(homedir, 'newmix', 'newmix.pid'))
-config.set('general', 'dbfile', os.path.join(homedir, 'newmix',
+config.set('general', 'pidfile', os.path.join(homedir, 'mimix', 'mimix.pid'))
+config.set('general', 'dbfile', os.path.join(homedir, 'mimix',
                                              'directory.db'))
 config.set('general', 'version', '0.1-alpha1')
 
@@ -48,7 +48,7 @@ config.set('chain', 'minlat', 0)
 config.set('chain', 'distance', 3)
 
 config.add_section('logging')
-config.set('logging', 'path', os.path.join(homedir, 'newmix', 'log'))
+config.set('logging', 'path', os.path.join(homedir, 'mimix', 'log'))
 config.set('logging', 'level', 'info')
 config.set('logging', 'format',
            '%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -56,9 +56,9 @@ config.set('logging', 'datefmt', '%Y-%m-%d %H:%M:%S')
 config.set('logging', 'retain', 7)
 
 config.add_section('pool')
-config.set('pool', 'indir', os.path.join(homedir, 'newmix',
+config.set('pool', 'indir', os.path.join(homedir, 'mimix',
            'inbound_pool'))
-config.set('pool', 'outdir', os.path.join(homedir, 'newmix',
+config.set('pool', 'outdir', os.path.join(homedir, 'mimix',
            'outbound_pool'))
 config.set('pool', 'size', 45)
 config.set('pool', 'rate', 65)
@@ -67,19 +67,19 @@ config.set('pool', 'expire', 7)
 
 config.add_section('http')
 config.set('http', 'wwwdir', os.path.join(homedir, 'apache', 'www'))
-# Try and process the .newmixrc file.  If it doesn't exist, we
+# Try and process the .mimixrc file.  If it doesn't exist, we
 # bailout as some options are compulsory.
-if 'NEWMIX' in os.environ:
-    configfile = os.environ['NEWMIX']
+if 'MIMIX' in os.environ:
+    configfile = os.environ['MIMIX']
 else:
-    configfile = os.path.join(homedir, '.newmixrc')
+    configfile = os.path.join(homedir, '.mimixrc')
 if os.path.isfile(configfile):
     config.read(configfile)
 
 else:
     sys.stderr.write("No configuration file found.\nThe expected "
                      "location is %s.  This can be overridden by defining "
-                     "the NEWMIX environment variable.\n" % configfile)
+                     "the MIMIX environment variable.\n" % configfile)
     sys.exit(1)
 
 if config.get('general', 'address').endswith('/'):

@@ -44,7 +44,7 @@ class Pool():
         self.rate = rate
         self.size = size
         self.expire = expire
-        self.log = logging.getLogger("newmix.%s" % name)
+        self.log = logging.getLogger("mimix.%s" % name)
 
     def filename(self):
         """ Return a unique, fully-qualified, random filename within the pool
@@ -123,13 +123,13 @@ class Pool():
             yield os.path.join(self.pooldir, f)
 
 
-log = logging.getLogger("newmix.%s" % __name__)
+log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
     logfmt = config.get('logging', 'format')
     datefmt = config.get('logging', 'datefmt')
     loglevels = {'debug': logging.DEBUG, 'info': logging.INFO,
                  'warn': logging.WARN, 'error': logging.ERROR}
-    log = logging.getLogger("newmix")
+    log = logging.getLogger("mimix")
     log.setLevel(loglevels[config.get('logging', 'level')])
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))

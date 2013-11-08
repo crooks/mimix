@@ -1,13 +1,13 @@
-Newmix - A work-in-progress Mix-based Anonymous Remailer
+Mimix - A work-in-progress Mix-based Anonymous Remailer
 
-The Newmix concept is to provide a Mixmaster like protocol with support for
+The Mimix concept is to provide a Mixmaster like protocol with support for
 larger RSA keys (up to 4096 bits) and replacement Hash (SHA2) and Symmetric
-Ciphers (AES).  Instead of using SMTP for inter-Remailer traffic, Newmix
-uses HTTP.  This makes it easy to blend in with the large traffic volume and
+Ciphers (AES).  Instead of using SMTP for inter-Remailer traffic, Mimix uses
+HTTP.  This makes it easy to blend in with the large traffic volume and
 userbase of Tor (http://www.torproject.org).  Latency is still provided by
 virtue of Dynamic Mix Pools at each Remailer node.
 
-https://github.com/crooks/newmix
+https://github.com/crooks/mimix
 
 This application is released under the GPL license.  Please see the included
 LICENSE file for Terms & Conditions of its usage.

@@ -1,4 +1,4 @@
-The following command will install the newmix program:-
+The following command will install the mimix program:-
 
 	python setup.py install
 
@@ -7,7 +7,7 @@ dist-packages directory. In most cases this will be root.  See the MANIFEST
 file for a list of the files that will be installed.
 
 PREREQUISITES
-In order to run Newmix, you will need to install the following modules:
+In order to run Mimix, you will need to install the following modules:
 mod-python	http://modpython.org/
 pycrypto	https://www.dlitz.net/software/pycrypto/
 requests	http://www.python-requests.org/en/latest/

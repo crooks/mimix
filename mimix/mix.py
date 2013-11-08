@@ -284,10 +284,10 @@ class Message():
         self.next_hop = next_hop
 
     def text(self):
-        msg = "-----BEGIN NEWMIX MESSAGE-----\n"
+        msg = "-----BEGIN MIMIX MESSAGE-----\n"
         msg += "Version: %s\n\n" % config.get('general', 'version')
         msg +=  self.mixmsg.encode('base64')
-        msg += "-----END NEWMIX MESSAGE-----\n"
+        msg += "-----END MIMIX MESSAGE-----\n"
         return msg
 
     def decode(self, packet):
@@ -367,16 +367,16 @@ class Message():
 
     def packet_read(self, text):
         """
-        This function expects to receive a Base64 encoded Newmix message.
+        This function expects to receive a Base64 encoded Mimix message.
         When reading inbound messages, the message will contain just the
-        Newmix packet.  For outbound messages, it will be prepended with
+        Mimix packet.  For outbound messages, it will be prepended with
         a series of 'key: value' pairs.  These are never transmitted, they
         just provide instructions to the sending remailer.
         """
         data = {}
-        packet_start = text.index('-----BEGIN NEWMIX MESSAGE-----\n')
-        base64_end = text.index('\n-----END NEWMIX MESSAGE-----')
-        packet_end = base64_end + 29
+        packet_start = text.index('-----BEGIN MIMIX MESSAGE-----\n')
+        base64_end = text.index('\n-----END MIMIX MESSAGE-----')
+        packet_end = base64_end + 28
         double_nl = text.index('\n\n', packet_start, packet_end)
         base64_start = double_nl + 2
         for line in text[:packet_start].split('\n'):
@@ -413,9 +413,9 @@ def new_msg():
     out_pool.packet_write(message)
 
 
-log = logging.getLogger("newmix.%s" % __name__)
+log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
-    log = logging.getLogger("newmix")
+    log = logging.getLogger("mimix")
     log.setLevel(logging.DEBUG)
     handler = logging.StreamHandler()
     log.addHandler(handler)

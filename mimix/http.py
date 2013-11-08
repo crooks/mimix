@@ -31,7 +31,7 @@ def get(url):
     return r.text
 
 def post(msg):
-    payload = {'newmix': msg}
+    payload = {'mimix': msg}
     r = requests.post('http://www.mixmin.net:8000/cgi-bin/webcgi.py',
                       data=payload)
 

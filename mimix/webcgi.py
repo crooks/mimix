@@ -2,7 +2,7 @@
 #
 # vim: tabstop=4 expandtab shiftwidth=4 noautoindent
 #
-# webcgi.py - CGI file for storing Newmix messages in a Pool
+# webcgi.py - CGI file for storing Mimix messages in a Pool
 #
 # Copyright (C) 2013 Steve Crook <steve@mixmin.net>
 #
@@ -30,12 +30,12 @@ print "Content-type:text/html\r\n\r\n"
 
 form = cgi.FieldStorage()
 
-content = form.getvalue('newmix')
+content = form.getvalue('mimix')
 if content is None:
     sys.exit(0)
-if '-----BEGIN NEWMIX MESSAGE-----' in content:
+if '-----BEGIN MIMIX MESSAGE-----' in content:
         while True:
-            fn = os.path.join('/home/crooks/newmix/inbound_pool',
+            fn = os.path.join('/home/crooks/mimix/inbound_pool',
                               'm' + Random.new().read(4).encode('hex'))
             if not os.path.isfile(fn):
                 break

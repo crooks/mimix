@@ -39,15 +39,15 @@ def parse_txt(text):
             log.info("Email error: %s", e)
 
 
-log = logging.getLogger("newmix.%s" % __name__)
+log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
     logfmt = config.get('logging', 'format')
     datefmt = config.get('logging', 'datefmt')
     loglevels = {'debug': logging.DEBUG, 'info': logging.INFO,
                  'warn': logging.WARN, 'error': logging.ERROR}
-    log = logging.getLogger("newmix")
+    log = logging.getLogger("mimix")
     log.setLevel(loglevels[config.get('logging', 'level')])
-    filename = os.path.join(config.get('logging', 'path'), 'newmix.log')
+    filename = os.path.join(config.get('logging', 'path'), 'mimix.log')
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)

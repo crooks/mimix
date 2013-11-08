@@ -23,14 +23,14 @@
 from distutils.core import setup
 
 setup(
-    name='newmix',
+    name='mimix',
     author='Steve Crook',
     author_email='steve@mixmin.net',
     version='0.1',
-    packages=['newmix', ],
-    #scripts=['newmix/foo', ],
+    packages=['mimix', ],
+    #scripts=['mimix/foo', ],
     license='GPLv3',
-    url='https://github.com/crooks/newmix',
+    url='https://github.com/crooks/mimix',
     long_description=open('README').read(),
-    #data_files=[('man/man1', ['man/nymserv.1'])],
+    #data_files=[('man/man1', ['man/mimix.1'])],
 )
