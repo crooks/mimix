@@ -572,6 +572,8 @@ class Chain(Client):
         # randomly selected (Depicted by an '*' or hardcoded (by remailer
         # address).
         nodes = [n.strip() for n in chainstr.split(',')]
+        if len(nodes) > 10:
+            raise ChainError("Maximum chain length exceeded")
         exit = nodes.pop()
         if exit == "*":
             exits = self.contenders(smtp=True)

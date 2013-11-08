@@ -89,7 +89,7 @@ def process_inbound():
             try:
                 m.decode(packet_data['binary'])
             except mix.PacketError, e:
-                log.debug("Decoding failed with: %s", e)
+                log.info("Decoding failed with: %s", e)
                 in_pool.delete(filename)
                 continue
             if m.is_exit:

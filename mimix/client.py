@@ -30,7 +30,11 @@ import requests
 def send_msg(args):
     # Chain creation
     if args.chainstr:
-        c = chain.create(chainstr=args.chainstr)
+        try:
+            c = chain.create(chainstr=args.chainstr)
+        except keys.ChainError, e:
+            sys.stderr.write("Chain Error: %s\n" % e)
+            sys.exit(1)
     else:
         c = chain.create()
     sys.stdout.write("Chain: %s\n" % ','.join(c))
