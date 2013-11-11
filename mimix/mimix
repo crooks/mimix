@@ -21,10 +21,13 @@
 # this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
-import mix
 import sys
-import keys
+import os.path
 import requests
+import keys
+import mix
+import server
+from Config import config
 
 
 def send_msg(args):
@@ -137,6 +140,19 @@ def remailer_delete(args):
 
     sys.stdout.write("Deleted %s entries\n" % count)
 
+
+def server_mode(args):
+    pidfile = os.path.join(config.get('general', 'piddir'),
+                           config.get('general', 'pidfile'))
+    errlog = os.path.join(config.get('logging', 'dir'), 'err.log')
+    s = server.Server(pidfile, stderr=errlog)
+    if args.start:
+        s.start()
+    elif args.stop:
+        s.stop()
+    elif args.run:
+        s.run(conlog=True)
+
 k = keys.Client()
 chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Mimix Client')
@@ -191,6 +207,16 @@ delgroup.add_argument('--address', type=str, dest='address',
                       help="Delete remailers by address")
 delgroup.add_argument('--name', type=str, dest='name',
                       help="Delete remailers by short name")
+
+srvr = cmds.add_parser('server', help="Server mode options")
+srvr.set_defaults(func=server_mode)
+servgroup = srvr.add_mutually_exclusive_group(required=True)
+servgroup.add_argument('--start', dest='start', action='store_true',
+                       help="Start the server daemon")
+servgroup.add_argument('--stop', dest='stop', action='store_true',
+                       help="Stop the server daemon")
+servgroup.add_argument('--run', dest='run', action='store_true',
+                       help="Start the server in a console")
 
 args = parser.parse_args()
 args.func(args)
