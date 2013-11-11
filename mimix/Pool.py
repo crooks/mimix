@@ -80,7 +80,9 @@ class Pool():
                           "sending.")
             files = []
             numfiles = 0
-        process_num = (numfiles * self.rate) / 100
+        # Without adding the 0.5, a queue containing one message will never
+        # send that message.
+        process_num = int(numfiles * float(self.rate) / 100 + 0.5)
         if process_num > 0:
             self.log.debug("Attempting to send %s messages from the pool.",
                            process_num)
