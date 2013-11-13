@@ -26,6 +26,11 @@ def future(days=0, hours=0, mins=0, secs=0):
                                       minutes=mins, seconds=secs)
 
 
+def past(days=0, hours=0, mins=0, secs=0):
+    return now() - datetime.timedelta(days=days, hours=hours,
+                                      minutes=mins, seconds=secs)
+
+
 def dhms_future(timestr):
     """Take a string formatted as 00h and convert it to a time in the future.
     """

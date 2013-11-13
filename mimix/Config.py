@@ -53,6 +53,7 @@ config.set('general', 'piddir', os.path.join(basedir, 'run'))
 config.set('general', 'pidfile', 'mimix.pid')
 config.set('general', 'dbdir', os.path.join(basedir, 'db'))
 config.set('general', 'dbfile', 'directory.db')
+config.set('general', 'idage', 28)
 config.set('general', 'version', '0.1-alpha1')
 
 config.add_section('chain')

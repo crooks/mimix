@@ -314,6 +314,8 @@ class Message():
         cipher = AES.new(aes, AES.MODE_CFB, iv)
         inner = Inner()
         inner.decode(cipher.decrypt(tophead[546:546 + 384]))
+        if self.keystore.idlog(inner.packet_id):
+            raise PacketError("Packet ID collision")
         # If this is an intermediate message, the remaining 9 header sections
         # need to be decrypted using the AES key from the inner header and the
         # series of 9 IVs stored in the packet info.

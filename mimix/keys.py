@@ -48,6 +48,7 @@ class Client(object):
             tables = []
         else:
             tables = [e[0] for e in data]
+        self.tables = tables
         if 'keyring' not in tables:
             self.create_keyring()
         exe('DELETE FROM keyring WHERE datetime("now") > validto')
@@ -356,6 +357,42 @@ class Server(Client):
         # On startup, force a daily run
         self.daily_trigger = timing.epoch_days()
         self.daily_events(force=True)
+        if 'idlog' not in self.tables:
+            self.create_idlog()
+
+    def idcount(self):
+        exe('SELECT COUNT(pid) FROM idlog')
+        return cur.fetchone()[0]
+
+    def create_idlog(self):
+        """
+        Table Structure
+        [ pid           Text                              Message ID ]
+        [ date          Date                  Message processed date ]
+        """
+        log.info('Creating DB table "idlog"')
+        exe('CREATE TABLE idlog (pid text, date DATE)')
+        con.commit()
+
+    def idlog(self, pid):
+        b64pid = pid.encode('base64')
+        criteria = (b64pid,)
+        exe('SELECT pid FROM idlog WHERE pid = ?', criteria)
+        if cur.fetchone():
+            log.warn("Packet ID Collision detected")
+            return True
+        insert = (b64pid, timing.now())
+        exe('INSERT INTO idlog (pid, date) VALUES (?, ?)', insert)
+        con.commit()
+        return False
+
+    def idprune(self):
+        numdays = config.getint('general', 'idage')
+        criteria = (timing.past(days=numdays),)
+        exe('DELETE FROM idlog WHERE date <= ?', criteria)
+        con.commit()
+        log.info("Post-pruning, Packet ID Log contains %s records.",
+                 self.idcount())
 
     def update(self):
         # Stop advertising keys that expire in the next 28 days.
@@ -452,6 +489,8 @@ class Server(Client):
             log.info("Running routine daily housekeeping actions.")
         # Unadvertise and delete expired keys.
         self.update()
+        # Delete expired records from the Packet ID Log
+        self.idprune()
         # If any seckeys expired, it's likely a new key will be needed.  Check
         # what key should be advertised and advertise it.
         self.key_to_advertise()
