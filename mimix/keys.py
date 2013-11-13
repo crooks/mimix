@@ -356,9 +356,9 @@ class Server(Client):
         super(Server, self).__init__()
         # On startup, force a daily run
         self.daily_trigger = timing.epoch_days()
-        self.daily_events(force=True)
         if 'idlog' not in self.tables:
             self.create_idlog()
+        self.daily_events(force=True)
 
     def idcount(self):
         exe('SELECT COUNT(pid) FROM idlog')
