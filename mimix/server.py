@@ -71,6 +71,9 @@ class Server(Daemon):
         self.out_pool = out_pool
         # Loop until a SIGTERM or Ctrl-C is received.
         while True:
+            # Every loop, check if it's yet time to perform daily housekeeping
+            # actions.  This also clears the Secret Key cache.
+            k.daily_events()
             # Process outbound messages first.  This ensures that no
             # message is received, processed and sent during the same
             # iteration.  Not sure if doing so would be a bad thing for

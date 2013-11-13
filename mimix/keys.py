@@ -483,7 +483,7 @@ class Server(Client):
         if data is None or data[0] is None:
             return None
         self.sec_cache[keyid] = RSA.importKey(data[0])
-        log.debug("Got seckey from DB")
+        log.info("%s: Got Secret Key from DB", keyid)
         return self.sec_cache[keyid]
 
     def advertise(self):
@@ -563,7 +563,7 @@ class Chain(Client):
         This function returns a remailer chain.  The first link in the chain
         being the entry-remailer and the last link, the exit-remailer.  As the
         exit node must meet specific criteria, it is selected first to ensure
-        the availability of suiable exit-nodes isn't exhausted during chain
+        the availability of suitable exit-nodes isn't exhausted during chain
         creation (see 'distance' parameter).  From that point, the chain is
         constructed in reverse.
         """
