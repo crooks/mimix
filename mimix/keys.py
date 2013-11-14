@@ -51,7 +51,8 @@ class Client(object):
         self.tables = tables
         if 'keyring' not in tables:
             self.create_keyring()
-        exe('DELETE FROM keyring WHERE date("now") > validto')
+        else:
+            self.delete_expired()
         con.commit()
 
     def create_keyring(self):
@@ -75,6 +76,18 @@ class Client(object):
                                      validto DATE, advertise INT, smtp INT,
                                      uptime INT, latency INT,
                                      UNIQUE (keyid))''')
+        con.commit()
+
+    def delete_expired(self):
+        """
+        Delete keys that are no longer valid.  This applies to both local and
+        remote remailers.  In the case of local, a new seckey will be
+        auto-generated if one doesn't exist in the keyring.
+        """
+        exe('DELETE FROM keyring WHERE date("now") > validto')
+        deleted = cur.rowcount
+        if deleted > 0:
+            log.info("Deleted %s remailer keys", deleted)
         con.commit()
 
     def get_public(self, name):
@@ -406,7 +419,7 @@ class Server(Client):
         log.info("Post-pruning, Packet ID Log contains %s records.",
                  self.idcount())
 
-    def update(self):
+    def unadvertise(self):
         # Stop advertising keys that expire in the next 28 days.
         criteria = (timing.date_future(days=28),)
         exe('''UPDATE keyring SET advertise = 0
@@ -415,12 +428,6 @@ class Server(Client):
         expired = cur.rowcount
         if expired > 0:
             log.info("Expired %s remailer keys", expired)
-        # Delete any keys that have expired.
-        exe('DELETE FROM keyring WHERE date("now") > validto')
-        deleted = cur.rowcount
-        if deleted > 0:
-            log.info("Deleted %s expired remailer keys", deleted)
-        con.commit()
 
     def generate(self):
         log.info("Generating new RSA keys")
@@ -501,7 +508,8 @@ class Server(Client):
         else:
             log.info("Running routine daily housekeeping actions.")
         # Unadvertise and delete expired keys.
-        self.update()
+        self.unadvertise()
+        self.delete_expired()
         # Delete expired records from the Packet ID Log
         self.idprune()
         # If any seckeys expired, it's likely a new key will be needed.  Check
