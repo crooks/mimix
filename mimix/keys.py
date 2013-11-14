@@ -103,7 +103,6 @@ class Client(object):
         else:
             return False
 
-
     def count(self):
         exe("SELECT COUNT(name) FROM keyring WHERE advertise")
         return cur.fetchone()[0]
@@ -309,15 +308,20 @@ class Client(object):
             count = self.count_addresses(keys['address'])
             if count <= 1:
                 break
-            # If these is more than one record with the given address,
+            # If there is more than one record with the given address,
             # ambiguity wins.  We don't know which is correct so it's safest to
             # assume neither and start from scratch.
+            log.info("Multiple keys known for %s.  Deleting them all and "
+                     "querying the remailer directly to ascertain correct "
+                     "key.", keys['address'])
             self.delete_address(keys['address'])
         if count == 0:
             # If no record exists for this address, we need to perform an
             # insert operation.  This includes latency and uptime stats where
             # we're forced to make the assumption that this is a fast, reliable
             # remailer.
+            log.info("Inserting new remailer: %s <%s>",
+                     keys['name'], keys['address'])
             values = (keys['name'],
                       keys['address'],
                       keys['keyid'],
@@ -333,6 +337,8 @@ class Client(object):
                                         uptime, latency)
                                VALUES (?,?,?,?,?,?,?,?,?,?)""", values)
         elif count == 1:
+            log.info("Updating details for %s <%s>",
+                     keys['name'], keys['address'])
             values = (keys['name'],
                       keys['keyid'],
                       keys['validfr'],
