@@ -55,6 +55,7 @@ config.set('general', 'dbdir', os.path.join(basedir, 'db'))
 config.set('general', 'dbfile', 'directory.db')
 config.set('general', 'idage', 28)
 config.set('general', 'version', '0.1-alpha1')
+config.set('general', 'keyvalid', 270)
 
 config.add_section('chain')
 config.set('chain', 'chain', "*,*,*")

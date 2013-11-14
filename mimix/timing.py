@@ -21,14 +21,31 @@ import datetime
 import time
 
 
+def now():
+    return datetime.datetime.utcnow()
+    #return datetime.datetime.now()
+
+
+def today():
+    """Return a date object for today."""
+    return now().date()
+
+
 def future(days=0, hours=0, mins=0, secs=0):
-    return now() + datetime.timedelta(days=days, hours=hours,
-                                      minutes=mins, seconds=secs)
+    return now() + datetime.timedelta(days=days, hours=hours, minutes=mins,
+                                      seconds=secs)
 
 
 def past(days=0, hours=0, mins=0, secs=0):
-    return now() - datetime.timedelta(days=days, hours=hours,
-                                      minutes=mins, seconds=secs)
+    return now() - datetime.timedelta(days=days, hours=hours, minutes=mins,
+                                      seconds=secs)
+
+def date_future(days):
+    return today() + datetime.timedelta(days=days)
+
+
+def date_past(days):
+    return today() - datetime.timedelta(days=days)
 
 
 def dhms_future(timestr):
@@ -63,10 +80,6 @@ def dhms_secs(timestr):
     raise ValueError("%s: Unknown time period char" % unit)
 
 
-def daydelta(dateobj, days):
-    return dateobj + datetime.timedelta(days=days)
-
-
 def epoch_days():
     """Return the number of days since Epoch (1st Jan 1970).
     """
@@ -86,25 +99,15 @@ def datestamp(stamp):
 
 
 def dateobj(datestr):
-    """Take a string formated date (yyyy-mm-dd) and return a datetime
-    object.
     """
-    return datetime.datetime.strptime(datestr, '%Y-%m-%d')
-
-
-def now():
-    return datetime.datetime.utcnow()
-    #return datetime.datetime.now()
+    Take a string formated date (yyyy-mm-dd) and return a date object.
+    """
+    return datetime.datetime.strptime(datestr, '%Y-%m-%d').date()
 
 
 def nowstamp():
     """A shortcut function to return a textual representation of now."""
     return timestamp(now())
-
-
-def today():
-    """Return a string representation of today's date."""
-    return datestamp(now())
 
 
 def last_midnight():

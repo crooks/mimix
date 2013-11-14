@@ -28,7 +28,7 @@ import timing
 import sqlite3
 import sys
 import logging
-import http
+import requests
 from Crypto.Random import random
 
 
@@ -51,7 +51,7 @@ class Client(object):
         self.tables = tables
         if 'keyring' not in tables:
             self.create_keyring()
-        exe('DELETE FROM keyring WHERE datetime("now") > validto')
+        exe('DELETE FROM keyring WHERE date("now") > validto')
         con.commit()
 
     def create_keyring(self):
@@ -62,18 +62,18 @@ class Client(object):
         [ address       Text            Address (and port if not 80) ]
         [ pubkey        Text                        Public Key (PEM) ]
         [ seckey        Text                        Secret Key (PEM) ]
-        [ validfr       Text (Date)                  Valid From Date ]
-        [ validto       Text (Date)                    Valid To Date ]
-        [ advertise     Int  (Bool)               Advertise (Yes/No) ]
-        [ smtp          Int  (Bool)               SMTP Exit (Yes/No) ]
+        [ validfr       Date                         Valid From Date ]
+        [ validto       Date                           Valid To Date ]
+        [ advertise     Boolean                   Advertise (Yes/No) ]
+        [ smtp          Boolean                   SMTP Exit (Yes/No) ]
         [ uptime        Int  (%)                  Uptime Reliability ]
         [ latency       Int  (Mins)                          Latency ]
         """
         log.info('Creating DB table "keyring"')
-        exe('''CREATE TABLE keyring (keyid text, name text, address text,
-                                     pubkey text, seckey text, validfr text,
-                                     validto text, advertise int, smtp int,
-                                     uptime int, latency int,
+        exe('''CREATE TABLE keyring (keyid TEXT, name TEXT, address TEXT,
+                                     pubkey TEXT, seckey TEXT, validfr DATE,
+                                     validto DATE, advertise INT, smtp INT,
+                                     uptime INT, latency INT,
                                      UNIQUE (keyid))''')
         con.commit()
 
@@ -102,6 +102,7 @@ class Client(object):
             return True
         else:
             return False
+
 
     def count(self):
         exe("SELECT COUNT(name) FROM keyring WHERE advertise")
@@ -199,7 +200,7 @@ class Client(object):
         remailer.  Each of these is fetched, along with its list of known
         remailers.  Keep going until we no longer discover any new remailers.
         """
-        all_remailers = {name:False for name in self.conf_fetch(address)}
+        all_remailers = {name: False for name in self.conf_fetch(address)}
         sys.stdout.write("%s: Knew about %s remailers.\n"
                          % (address, len(all_remailers)))
         # This loop will continue until a remailer-conf is fetched that
@@ -235,8 +236,8 @@ class Client(object):
                          % len(all_remailers))
 
     def conf_fetch(self, address):
-        conf_page = http.get("%s/remailer-conf.txt" % address)
-        if conf_page is None:
+        r = requests.get("%s/remailer-conf.txt" % address)
+        if r.text is None:
             raise KeyImportError("Could not retreive remailer-conf for %s"
                                  % address)
         keys = {}
@@ -244,24 +245,32 @@ class Client(object):
         # subsequent lines should be known remailer addresses.
         krl = False
         known_remailers = []
-        for line in conf_page.split("\n"):
+        for line in r.text.split("\n"):
             if not line:
                 continue
             if not krl and ": " in line:
                 key, val = line.split(": ", 1)
                 if key == "Valid From":
                     key = "validfr"
+                    try:
+                        val = timing.dateobj(val)
+                    except ValueError:
+                        raise KeyImportError("Invalid date format")
                 elif key == "Valid To":
                     key = "validto"
+                    try:
+                        val = timing.dateobj(val)
+                    except ValueError:
+                        raise KeyImportError("Invalid date format")
                 keys[key.lower()] = val
             elif krl and line not in known_remailers:
                 known_remailers.append(line)
             if line == 'Known remailers:-':
                 krl = True
-        b = conf_page.rfind("-----BEGIN PUBLIC KEY-----")
-        e = conf_page.rfind("-----END PUBLIC KEY-----")
+        b = r.text.rfind("-----BEGIN PUBLIC KEY-----")
+        e = r.text.rfind("-----END PUBLIC KEY-----")
         if b >= 0 and e >= 0:
-            keys['pubkey'] = conf_page[b:e + 24]
+            keys['pubkey'] = r.text[b:e + 24]
         else:
             # Can't import a remailer without a pubkey
             raise KeyImportError("Public key not found")
@@ -271,15 +280,12 @@ class Client(object):
             raise KeyImportError("Public key is not valid")
 
         # Date validation section
-        try:
-            if not 'validfr' in keys or not 'validto' in keys:
-                raise KeyImportError("Validity period not defined")
-            if timing.dateobj(keys['validfr']) > timing.now():
-                raise KeyImportError("Key is not yet valid")
-            if timing.dateobj(keys['validto']) < timing.now():
-                raise KeyImportError("Key has expired")
-        except ValueError:
-            raise KeyImportError("Invalid date format")
+        if not 'validfr' in keys or not 'validto' in keys:
+            raise KeyImportError("Validity period not defined")
+        if keys['validfr'] > timing.today():
+            raise KeyImportError("Key is not yet valid")
+        if keys['validto'] < timing.today():
+            raise KeyImportError("Key has expired")
         # The KeyID should always be the MD5 hash of the Pubkey.
         if 'keyid' not in keys:
             raise KeyImportError("KeyID not published")
@@ -355,7 +361,7 @@ class Server(Client):
     def __init__(self):
         super(Server, self).__init__()
         # On startup, force a daily run
-        self.daily_trigger = timing.epoch_days()
+        self.daily_trigger = timing.today()
         if 'idlog' not in self.tables:
             self.create_idlog()
         self.daily_events(force=True)
@@ -371,7 +377,7 @@ class Server(Client):
         [ date          Date                  Message processed date ]
         """
         log.info('Creating DB table "idlog"')
-        exe('CREATE TABLE idlog (pid text, date DATE)')
+        exe('CREATE TABLE idlog (pid TEXT, date DATE)')
         con.commit()
 
     def idlog(self, pid):
@@ -381,14 +387,14 @@ class Server(Client):
         if cur.fetchone():
             log.warn("Packet ID Collision detected")
             return True
-        insert = (b64pid, timing.now())
+        insert = (b64pid, timing.today())
         exe('INSERT INTO idlog (pid, date) VALUES (?, ?)', insert)
         con.commit()
         return False
 
     def idprune(self):
         numdays = config.getint('general', 'idage')
-        criteria = (timing.past(days=numdays),)
+        criteria = (timing.date_past(days=numdays),)
         exe('DELETE FROM idlog WHERE date <= ?', criteria)
         con.commit()
         log.info("Post-pruning, Packet ID Log contains %s records.",
@@ -396,7 +402,7 @@ class Server(Client):
 
     def update(self):
         # Stop advertising keys that expire in the next 28 days.
-        criteria = (timing.timestamp(timing.future(days=28)),)
+        criteria = (timing.date_future(days=28),)
         exe('''UPDATE keyring SET advertise = 0
                WHERE (? > validto OR uptime <= 0)
                AND advertise AND seckey IS NOT NULL''', criteria)
@@ -404,12 +410,11 @@ class Server(Client):
         if expired > 0:
             log.info("Expired %s remailer keys", expired)
         # Delete any keys that have expired.
-        exe('DELETE FROM keyring WHERE datetime("now") > validto')
+        exe('DELETE FROM keyring WHERE date("now") > validto')
         deleted = cur.rowcount
         if deleted > 0:
             log.info("Deleted %s expired remailer keys", deleted)
         con.commit()
-        
 
     def generate(self):
         log.info("Generating new RSA keys")
@@ -417,6 +422,7 @@ class Server(Client):
         pubkey = seckey.publickey()
         pubpem = pubkey.exportKey(format='PEM')
         keyid = hashlib.md5(pubpem).hexdigest()
+        expire = config.getint('general', 'keyvalid')
 
         insert = (keyid,
                   config.get('general', 'name'),
@@ -424,7 +430,7 @@ class Server(Client):
                   pubpem,
                   seckey.exportKey(format='PEM'),
                   timing.today(),
-                  timing.datestamp(timing.future(days=270)),
+                  timing.date_future(days=expire),
                   1,
                   config.getboolean('general', 'smtp'),
                   100,
@@ -442,13 +448,14 @@ class Server(Client):
             pubkey = seckey.publickey()
             pubpem = pubkey.exportKey(format='PEM')
             keyid = hashlib.md5(pubpem).hexdigest()
+            expire = config.getint('general', 'keyvalid')
             insert = (keyid,
                       'exit_%s' % n,
                       'www.mixmin.net:8080',
                       seckey.exportKey(format='PEM'),
                       pubpem,
                       timing.today(),
-                      timing.datestamp(timing.future(days=270)),
+                      timing.date_future(days=expire),
                       1,
                       1,
                       100,
@@ -462,8 +469,8 @@ class Server(Client):
     def key_to_advertise(self):
         exe('''SELECT keyid,seckey FROM keyring
                                    WHERE seckey IS NOT NULL
-                                   AND validfr <= datetime('now')
-                                   AND datetime('now') <= validto
+                                   AND validfr <= date("now")
+                                   AND date("now") <= validto
                                    AND advertise''')
         data = cur.fetchone()
         if data is None:
@@ -481,7 +488,7 @@ class Server(Client):
         """
         # Bypass daily events unless forced to run them or it's actually a
         # new day.
-        if not force and self.daily_trigger == timing.epoch_days():
+        if not force and self.daily_trigger >= timing.today():
             return None
         if force:
             log.info("Forced run of daily housekeeping actions.")
@@ -507,7 +514,7 @@ class Server(Client):
         self.fetch_cache = []
 
         # Set the daily trigger to today's date.
-        self.daily_trigger = timing.epoch_days()
+        self.daily_trigger = timing.today()
 
     def get_secret(self, keyid):
         """ Return the Secret Key object associated with the keyid provided.
@@ -681,14 +688,6 @@ class Pinger(Client):
                WHERE address = ? AND uptime < 100""", criteria)
         con.commit()
 
-    def dead_remailers():
-        criteria = (timing.timestamp(timing.future(days=28)),)
-        exe("""SELECT address FROM keyring
-               WHERE NOT advertise AND validto >= ?""", criteria)
-        data = cur.fetchall()
-        column = 0
-        return [e[column] for e in data]
-
 
 dbfile = os.path.join(config.get('general', 'dbdir'),
                       config.get('general', 'dbfile'))
@@ -707,7 +706,7 @@ if (__name__ == "__main__"):
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    ks = Keystore()
+    ks = Client()
     #ks.test_load()
     #ks.conf_fetch("www.mixmin.net")
     print ks.list_remailers()

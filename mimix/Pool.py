@@ -30,7 +30,6 @@ from Crypto import Random
 import timing
 
 
-
 class Pool():
     def __init__(self, name, pooldir, interval='1m', rate=100, size=1,
                  expire=7):
@@ -58,10 +57,10 @@ class Pool():
         return fn
 
     def packet_write(self, mixmsg):
-        expire = timing.epoch_days() + self.expire
+        expire = timing.date_future(days=self.expire)
         with open(self.filename(), 'w') as f:
             f.write("Next Hop: %s\n" % mixmsg.next_hop)
-            f.write("Expire: %s\n\n" % expire)
+            f.write("Expire: %s\n\n" % timing.datestamp(expire))
             f.write(mixmsg.text())
 
     def trigger(self):
