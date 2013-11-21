@@ -81,7 +81,8 @@ class Exit(object):
     [ Number of chunks             1 byte  ]
     [ Message ID                  16 bytes ]
     [ Initialization vector       16 bytes ]
-    [ Padding                    222 bytes ]
+    [ Exit type                    1 byte  ]
+    [ Padding                    189 bytes ]
     [ Payload digest              32 bytes ]
     """
     def new(self):
@@ -100,13 +101,22 @@ class Exit(object):
         assert len(digest) == 32
         self.payload_digest = digest
 
+    def set_exit_type(self, etype):
+        """
+        [ SMTP message          0 ]
+        [ Dummy message         1 ]
+        """
+        log.debug("Exit type set to: %s", etype)
+        self.exit_type = etype
+
     def packetize(self):
-        packet = struct.pack('<BB16s16s190s32s',
+        packet = struct.pack('<BB16s16sB189s32s',
                              self.chunknum,
                              self.numchunks,
                              self.messageid,
                              self.iv,
-                             Random.new().read(190),
+                             self.exit_type,
+                             Random.new().read(189),
                              self.payload_digest)
         assert len(packet) == 256
         return packet
@@ -117,8 +127,9 @@ class Exit(object):
          self.numchunks,
          self.messageid,
          self.iv,
+         self.exit_type,
          pad,
-         self.payload_digest) = struct.unpack('<BB16s16s190s32s', packet)
+         self.payload_digest) = struct.unpack('<BB16s16sB189s32s', packet)
 
 
 class Inner(object):
@@ -205,7 +216,7 @@ class Message():
         # in the Class kind of makes sense.
         self.keystore = keystore
 
-    def new(self, msg, chain):
+    def new(self, msg, chain, exit_type=0):
         headers = []
         # next_hop is used to ascertain is this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -224,6 +235,7 @@ class Message():
             if next_hop is None:
                 digest = hashlib.sha256(msg).digest()
                 inner.packet_info.add_payload_digest(digest)
+                inner.packet_info.set_exit_type(exit_type)
                 length = len(msg)
                 cipher = AES.new(inner.aes,
                                  AES.MODE_CFB,
@@ -331,7 +343,7 @@ class Message():
                 raise PacketError("Anti-tag digest mismatch")
             ivs = self._split_ivs(inner.packet_info.ivs)
             try:
-                self.keystore.conf_fetch(inner.packet_info.next_hop)
+                self.keystore.middle_spy(inner.packet_info.next_hop)
             except keystore.KeyImportError, e:
                 log.info("Key import fail: %s", e)
             for h in range(9):
@@ -354,6 +366,7 @@ class Message():
                 log.warn("Payload digest does not match hash in packet_info.")
                 raise PacketError("Content Digest Error")
             self.text = body
+            self.exit_type = inner.packet_info.exit_type
             self.is_exit = True
 
     def _split_headers(self, headbytes):

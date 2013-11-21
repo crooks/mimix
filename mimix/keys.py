@@ -590,7 +590,7 @@ class Server(Client):
                      "attempted today", address)
             raise KeyImportError("URL retrieval already attempted today")
         self.fetch_cache.append(address)
-
+        log.debug("Middle spy attempting to fetch: %s", address)
         self.conf_fetch(address)
         self.known_addresses.append(address)
 
@@ -722,5 +722,4 @@ if (__name__ == "__main__"):
     log.addHandler(handler)
     ks = Client()
     #ks.test_load()
-    #ks.conf_fetch("www.mixmin.net")
     print ks.list_remailers()

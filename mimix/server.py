@@ -33,6 +33,7 @@ import keys
 import sendmail
 from daemon import Daemon
 from Crypto import Random
+from Crypto.Random import random
 
 
 class Server(Daemon):
@@ -65,10 +66,12 @@ class Server(Daemon):
                              interval=config.get('pool', 'interval'),
                              rate=config.getint('pool', 'rate'),
                              size=config.getint('pool', 'size'))
+        chain = keys.Chain()
         Random.atfork()
         self.k = k
         self.in_pool = in_pool
         self.out_pool = out_pool
+        self.chain = chain
         # Loop until a SIGTERM or Ctrl-C is received.
         while True:
             # Every loop, check if it's yet time to perform daily housekeeping
@@ -113,10 +116,18 @@ class Server(Daemon):
                     log.info("Decoding failed with: %s", e)
                     self.in_pool.delete(filename)
                     continue
-                if m.is_exit:
-                    sendmail.parse_txt(m.text)
-                else:
+                if not m.is_exit:
+                    # Not an exit, write it to the outbound pool.
                     self.out_pool.packet_write(m)
+                    self.inject_dummy(config.getint('pool', 'indummy'))
+                elif m.exit_type == 0:
+                    # Exit and SMTP type: Email it.
+                    sendmail.parse_txt(m.text)
+                elif m.exit_type == 1:
+                    # It's a dummy
+                    log.debug("Discarding dummy message")
+                else:
+                    log.warn("Unknown Exit_Type, discarding.")
                 self.in_pool.delete(filename)
 
     def process_outbound(self):
@@ -128,6 +139,7 @@ class Server(Daemon):
         queue processing.
         """
         generator = self.out_pool.select_subset()
+        self.inject_dummy(config.getint('pool', 'outdummy'))
         for filename in generator:
             with open(filename, 'r') as f:
                 m = mix.Message(self.k)
@@ -175,9 +187,15 @@ class Server(Daemon):
             return False
         return True
 
-
-
-
+    def inject_dummy(self, odds):
+        if random.randint(1, 100) <= odds:
+            log.debug("Injecting Dummy Message into outbound queue.")
+            c = self.chain.create('*,*,*,*')
+            msg = "From: dummy@dummy\nTo: dummy@dummy\n\npayload"
+            # Encode the message
+            m = mix.Message(self.k)
+            m.new(msg, c, exit_type=1)
+            self.out_pool.packet_write(m)
 
 
 if (__name__ == "__main__"):
