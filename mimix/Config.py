@@ -81,7 +81,7 @@ config.set('pool', 'rate', 65)
 config.set('pool', 'interval', '15m')
 config.set('pool', 'expire', 7)
 config.set('pool', 'indummy', 10)
-config.set('pool', 'outdummy', 70)
+config.set('pool', 'outdummy', 20)
 
 config.add_section('http')
 config.set('http', 'wwwdir', os.path.join(homedir, 'apache', 'www'))

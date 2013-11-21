@@ -106,7 +106,6 @@ class Exit(object):
         [ SMTP message          0 ]
         [ Dummy message         1 ]
         """
-        log.debug("Exit type set to: %s", etype)
         self.exit_type = etype
 
     def packetize(self):

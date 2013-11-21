@@ -96,6 +96,7 @@ class Server(Daemon):
         chain.  In this instance the message is delivered and not outbound
         queued.
         """
+        self.inject_dummy(config.getint('pool', 'indummy'))
         generator = self.in_pool.select_all()
         for filename in generator:
             with open(filename, 'r') as f:
@@ -119,7 +120,6 @@ class Server(Daemon):
                 if not m.is_exit:
                     # Not an exit, write it to the outbound pool.
                     self.out_pool.packet_write(m)
-                    self.inject_dummy(config.getint('pool', 'indummy'))
                 elif m.exit_type == 0:
                     # Exit and SMTP type: Email it.
                     sendmail.parse_txt(m.text)
