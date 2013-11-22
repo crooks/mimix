@@ -34,6 +34,7 @@ class Pool():
     def __init__(self, name, pooldir, interval='1m', rate=100, size=1,
                  expire=7):
         self.trigger_time = timing.future(mins=1)
+        self.trigger_hour = timing.future(hours=1)
         assert type(interval) == StringType
         assert type(rate) == IntType
         assert type(size) == IntType
@@ -70,13 +71,24 @@ class Pool():
         """Pick a random subset of filenames in the Pool and return them as a
         list.  If the Pool isn't sufficiently large, return an empty list.
         """
+        # Set a flag to indicate an hour has passed.
+        if self.trigger_hour < timing.now():
+            hourly = True
+            self.trigger_hour = timing.future(hours=1)
+        else:
+            hourly = False
+
         files = os.listdir(self.pooldir)
         numfiles = len(files)
-        self.log.debug("Pool contains %s messages", numfiles)
+        if hourly:
+            self.log.info("Pool contains %s messages", numfiles)
+        else:
+            self.log.debug("Pool contains %s messages", numfiles)
+
         if numfiles < self.size:
             # The pool is too small to send messages.
             self.log.debug("Pool is insufficiently populated to trigger "
-                          "sending.")
+                           "sending.")
             files = []
             numfiles = 0
         # Without adding the 0.5, a queue containing one message will never
