@@ -54,8 +54,8 @@ def send_msg(args):
         msg = tohead + msg
 
     # Encode the message
-    m = mix.Message(k)
-    m.new(msg, c)
+    m = mix.Encode(k)
+    m.encode(msg, c)
 
     if args.stdout:
         sys.stdout.write(m.text())

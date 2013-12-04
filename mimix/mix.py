@@ -23,12 +23,14 @@ import struct
 import timing
 import hashlib
 import logging
+import math
 import Pool
 import sys
 from Config import config
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
+import libmix
 
 
 class PacketError(Exception):
@@ -192,7 +194,7 @@ class Inner(object):
         self.packet_info = packet_info
 
 
-class Message():
+class Encode():
     """
     Headers:
     [ Public key ID                 16 bytes ]
@@ -216,6 +218,20 @@ class Message():
         self.keystore = keystore
 
     def new(self, msg, chain, exit_type=0):
+        size = len(msg)
+        if size > 10238 and exit_type != 0:
+            log.warn("Non SMTP message exceeds singe-chunk payload bytes.")
+            raise PacketError("Non-SMTP payload size exceeded")
+        numchunks = int(math.ceil(size / 10238.0))
+        self.chain = chain
+        self.exit_type = exit_type
+        for c in range(0, numchunks):
+            start = c * 10238
+            end = (c + 1) * 10238
+            self.encode(msg[start:end])
+        sys.exit(0)
+
+    def encode(self, msg, chain, exit_type=0):
         headers = []
         # next_hop is used to ascertain is this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -241,11 +257,13 @@ class Message():
                                  inner.packet_info.iv)
                 body = struct.pack('<H', length) + msg
                 body = cipher.encrypt(body)
-                pad_bytes = 10240 - len(body)
-                body += Random.new().read(pad_bytes)
+                bodlen = len(body)
+                if bodlen < 10240:
+                    pad_bytes = 10240 - bodlen
+                    body += Random.new().read(pad_bytes)
                 assert len(body) == 10240
             else:
-                ivs = self._split_ivs(inner.packet_info.ivs)
+                ivs = libmix.split_ivs(inner.packet_info.ivs)
                 for e in range(len(headers)):
                     cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[e])
                     headers[e] = cipher.encrypt(headers[e])
@@ -288,23 +306,28 @@ class Message():
             next_hop = rem_info[1]
         # The final step of encoding is to merge the headers (along with fake
         # headers for padding) with the body.
-        self.mixmsg = (''.join(headers) +
-                       Random.new().read((10 - len(headers)) * 1024) +
-                       body)
+        binary = (''.join(headers) +
+                  Random.new().read((10 - len(headers)) * 1024) +
+                  body)
+        text = "-----BEGIN MIMIX MESSAGE-----\n"
+        text += "Version: %s\n\n" % config.get('general', 'version')
+        text +=  binary.encode('base64')
+        text += "-----END MIMIX MESSAGE-----\n"
         self.next_hop = next_hop
+        self.text = text
 
-    def text(self):
-        msg = "-----BEGIN MIMIX MESSAGE-----\n"
-        msg += "Version: %s\n\n" % config.get('general', 'version')
-        msg +=  self.mixmsg.encode('base64')
-        msg += "-----END MIMIX MESSAGE-----\n"
-        return msg
+class Decode():
+    def __init__(self, keystore):
+        self.is_exit = False
+        # Encode and decode operations require the keystore so scoping it
+        # in the Class kind of makes sense.
+        self.keystore = keystore
 
     def decode(self, packet):
         assert len(packet) == 20480
         self.is_exit = False
         # Split the header component into its 10 distinct headers.
-        headers = self._split_headers(packet[:10240])
+        headers = libmix.split_headers(packet[:10240])
         # The first header gets processed and removed at this hop.
         tophead = headers.pop(0)
         if hashlib.sha512(tophead[:960]).digest() != tophead[960:]:
@@ -340,7 +363,7 @@ class Message():
                 log.warn("Anti-tag digest failure.  This message might have "
                          "been tampered with.")
                 raise PacketError("Anti-tag digest mismatch")
-            ivs = self._split_ivs(inner.packet_info.ivs)
+            ivs = libmix.split_ivs(inner.packet_info.ivs)
             try:
                 self.keystore.middle_spy(inner.packet_info.next_hop)
             except keystore.KeyImportError, e:
@@ -349,9 +372,14 @@ class Message():
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[h])
                 headers[h] = cipher.decrypt(headers[h])
             cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
-            self.mixmsg = (''.join(headers) +
-                           Random.new().read(1024) +
-                           cipher.decrypt(packet[10240:20480]))
+            binary = (''.join(headers) +
+                      Random.new().read(1024) +
+                      cipher.decrypt(packet[10240:20480]))
+            text = "-----BEGIN MIMIX MESSAGE-----\n"
+            text += "Version: %s\n\n" % config.get('general', 'version')
+            text +=  binary.encode('base64')
+            text += "-----END MIMIX MESSAGE-----\n"
+            self.text = text
             self.next_hop = inner.packet_info.next_hop
             self.is_exit = False
 
@@ -367,16 +395,6 @@ class Message():
             self.text = body
             self.exit_type = inner.packet_info.exit_type
             self.is_exit = True
-
-    def _split_headers(self, headbytes):
-        assert len(headbytes) % 1024 == 0
-        b = len(headbytes)
-        return [headbytes[i:i+1024] for i in range(0, b, 1024)]
-
-    def _split_ivs(self, ivs):
-        assert len(ivs) % 16 == 0
-        b = len(ivs)
-        return [ivs[i:i+16] for i in range(0, b, 16)]
 
     def packet_read(self, text):
         """
@@ -405,6 +423,13 @@ class Message():
         data['binary'] = text[base64_start:base64_end].decode('base64')
         assert len(data['binary']) == 20480
         return data
+
+    def text(self):
+        msg = "-----BEGIN MIMIX MESSAGE-----\n"
+        msg += "Version: %s\n\n" % config.get('general', 'version')
+        msg +=  self.mixmsg.encode('base64')
+        msg += "-----END MIMIX MESSAGE-----\n"
+        return msg
 
     def _colonspace(self, data):
         key, value = data.split(': ', 1)

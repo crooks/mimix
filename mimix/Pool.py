@@ -62,7 +62,7 @@ class Pool():
         with open(self.filename(), 'w') as f:
             f.write("Next Hop: %s\n" % mixmsg.next_hop)
             f.write("Expire: %s\n\n" % timing.datestamp(expire))
-            f.write(mixmsg.text())
+            f.write(mixmsg.text)
 
     def trigger(self):
         return timing.now() >= self.trigger_time

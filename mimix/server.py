@@ -100,7 +100,7 @@ class Server(Daemon):
         generator = self.in_pool.select_all()
         for filename in generator:
             with open(filename, 'r') as f:
-                m = mix.Message(self.k)
+                m = mix.Decode(self.k)
                 try:
                     packet_data = m.packet_read(f.read())
                 except ValueError, e:
@@ -142,7 +142,7 @@ class Server(Daemon):
         self.inject_dummy(config.getint('pool', 'outdummy'))
         for filename in generator:
             with open(filename, 'r') as f:
-                m = mix.Message(self.k)
+                m = mix.Decode(self.k)
                 try:
                     packet_data = m.packet_read(f.read())
                 except ValueError, e:
@@ -193,8 +193,8 @@ class Server(Daemon):
             c = self.chain.create('*,*,*,*')
             msg = "From: dummy@dummy\nTo: dummy@dummy\n\npayload"
             # Encode the message
-            m = mix.Message(self.k)
-            m.new(msg, c, exit_type=1)
+            m = mix.Encode(self.k)
+            m.encode(msg, c, exit_type=1)
             self.out_pool.packet_write(m)
 
 
