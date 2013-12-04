@@ -28,3 +28,8 @@ def split_ivs(ivs):
     assert len(ivs) % 16 == 0
     b = len(ivs)
     return [ivs[i:i+16] for i in range(0, b, 16)]
+
+def colonspace(data):
+        key, value = data.split(': ', 1)
+        key = key.strip().lower().replace(' ', '_')
+        return key, value.strip()

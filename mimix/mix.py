@@ -412,12 +412,12 @@ class Decode():
         base64_start = double_nl + 2
         for line in text[:packet_start].split('\n'):
             if ': ' in line:
-                k, v  = self._colonspace(line)
+                k, v  = libmix.colonspace(line)
                 data[k] = v
         version = text[packet_start:packet_end].split("\n", 2)[1]
         if not version.startswith('Version: '):
             raise ValueError('Version header not found')
-        k, v = self._colonspace(version)
+        k, v = libmix.colonspace(version)
         data[k] = v
         data['packet'] = text[packet_start:packet_end]
         data['binary'] = text[base64_start:base64_end].decode('base64')
@@ -430,11 +430,6 @@ class Decode():
         msg +=  self.mixmsg.encode('base64')
         msg += "-----END MIMIX MESSAGE-----\n"
         return msg
-
-    def _colonspace(self, data):
-        key, value = data.split(': ', 1)
-        key = key.strip().lower().replace(' ', '_')
-        return key, value.strip()
 
 
 log = logging.getLogger("mimix.%s" % __name__)
