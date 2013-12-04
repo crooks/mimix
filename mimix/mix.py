@@ -426,13 +426,6 @@ class Decode():
         assert len(data['binary']) == 20480
         return data
 
-    def text(self):
-        msg = "-----BEGIN MIMIX MESSAGE-----\n"
-        msg += "Version: %s\n\n" % config.get('general', 'version')
-        msg +=  self.mixmsg.encode('base64')
-        msg += "-----END MIMIX MESSAGE-----\n"
-        return msg
-
 
 log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):

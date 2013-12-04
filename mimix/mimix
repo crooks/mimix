@@ -58,9 +58,9 @@ def send_msg(args):
     m.encode(msg, c)
 
     if args.stdout:
-        sys.stdout.write(m.text())
+        sys.stdout.write(m.text)
     else:
-        payload = {'base64': m.text()}
+        payload = {'base64': m.text}
         url = '%s/collector.py/msg' % m.next_hop
         try:
             # Send the message to the first hop.
