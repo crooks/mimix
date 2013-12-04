@@ -396,7 +396,7 @@ class Decode():
             self.exit_type = inner.packet_info.exit_type
             self.is_exit = True
 
-    def packet_read(self, text):
+    def packet_import(self, filename):
         """
         This function expects to receive a Base64 encoded Mimix message.
         When reading inbound messages, the message will contain just the
@@ -404,23 +404,25 @@ class Decode():
         a series of 'key: value' pairs.  These are never transmitted, they
         just provide instructions to the sending remailer.
         """
+        with open(filename, 'r') as f:
+            payload = f.read()
         data = {}
-        packet_start = text.index('-----BEGIN MIMIX MESSAGE-----\n')
-        base64_end = text.index('\n-----END MIMIX MESSAGE-----')
+        packet_start = payload.index('-----BEGIN MIMIX MESSAGE-----\n')
+        base64_end = payload.index('\n-----END MIMIX MESSAGE-----')
         packet_end = base64_end + 28
-        double_nl = text.index('\n\n', packet_start, packet_end)
+        double_nl = payload.index('\n\n', packet_start, packet_end)
         base64_start = double_nl + 2
-        for line in text[:packet_start].split('\n'):
+        for line in payload[:packet_start].split('\n'):
             if ': ' in line:
                 k, v  = libmix.colonspace(line)
                 data[k] = v
-        version = text[packet_start:packet_end].split("\n", 2)[1]
+        version = payload[packet_start:packet_end].split("\n", 2)[1]
         if not version.startswith('Version: '):
             raise ValueError('Version header not found')
         k, v = libmix.colonspace(version)
         data[k] = v
-        data['packet'] = text[packet_start:packet_end]
-        data['binary'] = text[base64_start:base64_end].decode('base64')
+        data['packet'] = payload[packet_start:packet_end]
+        data['binary'] = payload[base64_start:base64_end].decode('base64')
         assert len(data['binary']) == 20480
         return data
 

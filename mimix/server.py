@@ -99,36 +99,35 @@ class Server(Daemon):
         self.inject_dummy(config.getint('pool', 'indummy'))
         generator = self.in_pool.select_all()
         for filename in generator:
-            with open(filename, 'r') as f:
-                m = mix.Decode(self.k)
-                try:
-                    packet_data = m.packet_read(f.read())
-                except ValueError, e:
-                    # ValueError is returned when the packet being processed isn't
-                    # compliant with the specification.  These messages are
-                    # deleted without further consideration.
-                    log.debug("Mimix packet read failed with: %s", e)
-                    self.in_pool.delete(filename)
-                    continue
-                # Process the Base64 component of the message.
-                try:
-                    m.decode(packet_data['binary'])
-                except mix.PacketError, e:
-                    log.info("Decoding failed with: %s", e)
-                    self.in_pool.delete(filename)
-                    continue
-                if not m.is_exit:
-                    # Not an exit, write it to the outbound pool.
-                    self.out_pool.packet_write(m)
-                elif m.exit_type == 0:
-                    # Exit and SMTP type: Email it.
-                    sendmail.parse_txt(m.text)
-                elif m.exit_type == 1:
-                    # It's a dummy
-                    log.debug("Discarding dummy message")
-                else:
-                    log.warn("Unknown Exit_Type, discarding.")
+            m = mix.Decode(self.k)
+            try:
+                packet_data = m.packet_import(filename)
+            except ValueError, e:
+                # ValueError is returned when the packet being processed isn't
+                # compliant with the specification.  These messages are
+                # deleted without further consideration.
+                log.debug("Mimix packet read failed with: %s", e)
                 self.in_pool.delete(filename)
+                continue
+            # Process the Base64 component of the message.
+            try:
+                m.decode(packet_data['binary'])
+            except mix.PacketError, e:
+                log.info("Decoding failed with: %s", e)
+                self.in_pool.delete(filename)
+                continue
+            if not m.is_exit:
+                # Not an exit, write it to the outbound pool.
+                self.out_pool.packet_write(m)
+            elif m.exit_type == 0:
+                # Exit and SMTP type: Email it.
+                sendmail.parse_txt(m.text)
+            elif m.exit_type == 1:
+                # It's a dummy
+                log.debug("Discarding dummy message")
+            else:
+                log.warn("Unknown Exit_Type, discarding.")
+            self.in_pool.delete(filename)
 
     def process_outbound(self):
         """
@@ -141,25 +140,41 @@ class Server(Daemon):
         generator = self.out_pool.select_subset()
         self.inject_dummy(config.getint('pool', 'outdummy'))
         for filename in generator:
-            with open(filename, 'r') as f:
-                m = mix.Decode(self.k)
-                try:
-                    packet_data = m.packet_read(f.read())
-                except ValueError, e:
-                    log.debug("Mimix packet read failed with: %s", e)
-                    self.out_pool.delete(filename)
-                    continue
-            if packet_data['expire'] < timing.epoch_days():
-                # Remailers come and go.  They also fail from time to time.  When
-                # a message is written to the outbound queue, it's stamped with an
-                # expiry date.  If it's still queued after that date, we give up
-                # trying to send it.  Sadly, a message is lost but messages can't
-                # be queued forever.
+            m = mix.Decode(self.k)
+            try:
+                packet_data = m.packet_import(filename)
+            except ValueError, e:
+                log.debug("Mimix packet read failed with: %s", e)
+                self.out_pool.delete(filename)
+                continue
+            if not 'next_hop' in packet_data:
+                log.error("Outbound pool file with no Next Hop header.")
+                self.out_pool.delete(filename)
+                continue
+            if not 'expire' in packet_data:
+                log.error("Outbound pool file with no Expire header.")
+                self.out_pool.delete(filename)
+                continue
+            try:
+                expire = timing.dateobj(packet_data['expire'])
+            except ValueError,e:
+                log.error("Invalid Expire: %s", e)
+                self.out_pool.delete(filename)
+                continue
+            if expire < timing.today():
+                # Remailers come and go.  They also fail from time to time.
+                # When a message is written to the outbound queue, it's
+                # stamped with an expiry date.  If it's still queued after
+                # that date, we give up trying to send it.  Sadly, a
+                # message is lost but messages can't be queued forever.
                 log.warn("Giving up on sending msg to %s.",
                          packet_data['next_hop'])
                 #TODO Statistically mark down this remailer.
                 self.out_pool.delete(filename)
                 continue
+
+            # That's all the packet valdation completed.  From here on, it's
+            # about trying to send the message.
             payload = {'base64': packet_data['packet']}
             try:
                 # Actually try to send the message to the next_hop.  There are
