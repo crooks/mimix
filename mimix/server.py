@@ -180,13 +180,15 @@ class Server(Daemon):
                 # Actually try to send the message to the next_hop.  There are
                 # probably a lot of failure conditions to handle at this point.
                 recipient = '%s/collector.py/msg' % packet_data['next_hop']
+                log.debug("Attempting delivery of %s to %s",
+                          filename, packet_data['next_hop'])
                 r = requests.post(recipient, data=payload)
                 if r.status_code == requests.codes.ok:
                     self.out_pool.delete(filename)
                 else:
-                    log.info("Delivery to %s failed with status code: %s.  "
-                             "Will keep trying to deliver it.",
-                             recipient, r.status_code)
+                    log.info("Delivery of %s to %s failed with status code: "
+                             "%s.  Will keep trying to deliver it.",
+                             filename, recipient, r.status_code)
             except requests.exceptions.ConnectionError:
                 #TODO Mark down remailer statistics.
                 log.info("Unable to connect to %s.  Will keep trying.", recipient)
