@@ -32,15 +32,13 @@ from Config import config
 
 def send_msg(args):
     # Chain creation
-    if args.chainstr:
-        try:
-            c = chain.create(chainstr=args.chainstr)
-        except keys.ChainError, e:
-            sys.stderr.write("Chain Error: %s\n" % e)
-            sys.exit(1)
-    else:
-        c = chain.create()
-    sys.stdout.write("Chain: %s\n" % ','.join(c))
+    chain = keys.Chain()
+    try:
+        chain.create(chainstr=args.chainstr)
+    except keys.ChainError, e:
+        sys.stderr.write("Chain Error: %s\n" % e)
+        sys.exit(1)
+    sys.stdout.write("Chain: \"%s\"\n" % chain.chainstr)
 
     if args.filename:
         with open(args.filename, 'r') as f:
@@ -55,7 +53,7 @@ def send_msg(args):
 
     # Encode the message
     m = mix.Encode(k)
-    m.encode(msg, c)
+    m.encode(msg, chain.chain)
 
     if args.stdout:
         sys.stdout.write(m.text)
@@ -154,7 +152,6 @@ def server_mode(args):
         s.run(conlog=True)
 
 k = keys.Client()
-chain = keys.Chain()
 parser = argparse.ArgumentParser(description='Mimix Client')
 cmds = parser.add_subparsers(help='Commands')
 

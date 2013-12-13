@@ -618,7 +618,7 @@ class Chain(Client):
         column = 0
         return [e[column] for e in data]
 
-    def create(self, chainstr=config.get('chain', 'chain')):
+    def create(self, chainstr=None):
         """
         This function returns a remailer chain.  The first link in the chain
         being the entry-remailer and the last link, the exit-remailer.  As the
@@ -627,6 +627,8 @@ class Chain(Client):
         creation (see 'distance' parameter).  From that point, the chain is
         constructed in reverse.
         """
+        if chainstr is None:
+            chainstr = config.get('chain', 'chain')
         distance = config.getint('chain', 'distance')
         # nodes is a list of each link in the chain.  Each link can either be
         # randomly selected (Depicted by an '*' or hardcoded (by remailer
@@ -649,6 +651,16 @@ class Chain(Client):
             log.error("%s: Invalid hardcoded exit remailer", exit)
             raise ChainError("Invalid exit node")
         chain = [exit]
+        self.exit = exit
+        # At this point, nodes is a list of the originally submitted chain
+        # string, minus the exit.  In order to create chunked messages, that
+        # chain must be repeatedly created but with a hardcoded exit node.  To
+        # achieve that, the chainstr is reproduced with the exit hardcoded to
+        # the exit node selected above.
+        exitchain = list(nodes)
+        exitchain.append(exit)
+        self.exitchain = ",".join(exitchain)
+
         # If the requested chain only contained a single remailer, bail out
         # at this point and save some cycles.
         if not nodes:
@@ -686,7 +698,10 @@ class Chain(Client):
             # The newly selected remailer becomes the first link in chain.
             chain.insert(0, remailer)
             distance_exclude.append(remailer)
-        return chain
+        self.chain = chain
+        self.chainstr = ",".join(chain)
+        self.entry = chain[0]
+        self.chainlen = len(chain)
 
 
 class Pinger(Client):
@@ -720,6 +735,12 @@ if (__name__ == "__main__"):
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
-    ks = Client()
-    #ks.test_load()
-    print ks.list_remailers()
+    #ks = Client()
+    #print ks.list_remailers()
+    c = Chain()
+    chain = "*,fleegle,*"
+    c.create(chainstr=chain)
+    print c.chain
+    print c.chainstr
+    print c.exit
+    print c.chainlen

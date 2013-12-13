@@ -66,12 +66,10 @@ class Server(Daemon):
                              interval=config.get('pool', 'interval'),
                              rate=config.getint('pool', 'rate'),
                              size=config.getint('pool', 'size'))
-        chain = keys.Chain()
         Random.atfork()
         self.k = k
         self.in_pool = in_pool
         self.out_pool = out_pool
-        self.chain = chain
         # Loop until a SIGTERM or Ctrl-C is received.
         while True:
             # Every loop, check if it's yet time to perform daily housekeeping
@@ -207,11 +205,12 @@ class Server(Daemon):
     def inject_dummy(self, odds):
         if random.randint(1, 100) <= odds:
             log.debug("Injecting Dummy Message into outbound queue.")
-            c = self.chain.create('*,*,*,*')
+            chain = keys.Chain()
+            chain.create('*,*,*,*')
             msg = "From: dummy@dummy\nTo: dummy@dummy\n\npayload"
             # Encode the message
             m = mix.Encode(self.k)
-            m.encode(msg, c, exit_type=1)
+            m.encode(msg, chain.chain, exit_type=1)
             self.out_pool.packet_write(m)
 
 
