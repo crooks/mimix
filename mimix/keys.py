@@ -598,29 +598,31 @@ class Server(Client):
 class Chain(Client):
     """
     """
-    def contenders(self,
-                   uptime=config.getint('chain', 'uptime'),
-                   maxlat=config.getint('chain', 'maxlat'),
-                   minlat=config.getint('chain', 'minlat'),
-                   smtp=False):
+    def contenders(self, uptime=None, maxlat=None, minlat=None, smtp=False):
         """
         Find all the known Remailers that meet the selection criteria of
         Uptime, Maximum Latency and Minimum Latency.  An additional criteria
-        of SMTP-only nodes can also be stipulated.  Only the remailer address
+        of SMTP-only nodes can also be stipulated.  Only the remailer name
         is returned as the valid key is cross-referenced during message
         compilation.
         """
-        insert = (uptime, maxlat, minlat, smtp)
+        if uptime is None:
+            uptime = config.getint('chain', 'uptime')
+        if maxlat is None:
+            maxlat = config.getint('chain', 'maxlat')
+        if minlat is None:
+            minlat = config.getint('chain', 'minlat')
+        criteria = (uptime, maxlat, minlat, smtp)
         exe("""SELECT name FROM keyring
                WHERE uptime>=? AND latency<=? AND latency>=? AND
-               pubkey IS NOT NULL AND (smtp or smtp=?)""", insert)
+               pubkey IS NOT NULL AND (smtp or smtp=?)""", criteria)
         data = cur.fetchall()
         column = 0
         return [e[column] for e in data]
 
     def create(self, chainstr=None):
         """
-        This function returns a remailer chain.  The first link in the chain
+        This function generates a remailer chain.  The first link in the chain
         being the entry-remailer and the last link, the exit-remailer.  As the
         exit node must meet specific criteria, it is selected first to ensure
         the availability of suitable exit-nodes isn't exhausted during chain
@@ -631,7 +633,7 @@ class Chain(Client):
             chainstr = config.get('chain', 'chain')
         distance = config.getint('chain', 'distance')
         # nodes is a list of each link in the chain.  Each link can either be
-        # randomly selected (Depicted by an '*' or hardcoded (by remailer
+        # randomly selected (depicted by an '*') or hardcoded (by remailer
         # address).
         nodes = [n.strip() for n in chainstr.split(',')]
         if len(nodes) > 10:
@@ -661,10 +663,6 @@ class Chain(Client):
         exitchain.append(exit)
         self.exitchain = ",".join(exitchain)
 
-        # If the requested chain only contained a single remailer, bail out
-        # at this point and save some cycles.
-        if not nodes:
-            return chain
         # distance_exclude is a list of the remailers in close proximity to
         # the node currently being selected.  It prevents a single remailer
         # from occupying two overly-proximate links.
