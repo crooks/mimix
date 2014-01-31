@@ -74,7 +74,7 @@ class Intermediate(object):
         self.ivs = packet[:144]
         self.next_hop = packet[144:144 + 80].rstrip('\x00')
         self.antitag = packet[144 + 80:]
-        
+
 
 class Exit(object):
     """
@@ -84,8 +84,9 @@ class Exit(object):
     [ Message ID                  16 bytes ]
     [ Initialization vector       16 bytes ]
     [ Exit type                    1 byte  ]
-    [ Padding                    189 bytes ]
+    [ Payload length               2 bytes ]
     [ Payload digest              32 bytes ]
+    [ Padding                    187 bytes ]
     """
     def new(self):
         self.packet_type = "1"
@@ -99,9 +100,13 @@ class Exit(object):
         self.chunknum = chunknum
         self.numchunks = numchunks
 
-    def add_payload_digest(self, digest):
+    def set_payload_digest(self, digest):
         assert len(digest) == 32
         self.payload_digest = digest
+
+    def set_payload_length(self, length):
+        assert length <= 10240
+        self.payload_length = length
 
     def set_exit_type(self, etype):
         """
@@ -111,17 +116,18 @@ class Exit(object):
         self.exit_type = etype
 
     def packetize(self):
-        packet = struct.pack('<BB16s16sB189s32s',
+        packet = struct.pack('<BB16s16sBH32s187s',
                              self.chunknum,
                              self.numchunks,
                              self.messageid,
                              self.iv,
                              self.exit_type,
-                             Random.new().read(189),
-                             self.payload_digest)
+                             self.payload_length,
+                             self.payload_digest,
+                             Random.new().read(187))
         assert len(packet) == 256
         return packet
-        
+
     def decode(self, packet):
         assert len(packet) == 256
         (self.chunknum,
@@ -129,8 +135,9 @@ class Exit(object):
          self.messageid,
          self.iv,
          self.exit_type,
-         pad,
-         self.payload_digest) = struct.unpack('<BB16s16sB189s32s', packet)
+         self.payload_length,
+         self.payload_digest,
+         _) = struct.unpack('<BB16s16sBH32s187s', packet)
 
 
 class Inner(object):
@@ -222,7 +229,7 @@ class Encode():
         if size > 10238 and exit_type != 0:
             log.warn("Non SMTP message exceeds singe-chunk payload bytes.")
             raise PacketError("Non-SMTP payload size exceeded")
-        numchunks = int(math.ceil(size / 10238.0))
+        numchunks = int(math.ceil(size / 10240.0))
         self.chain = chain
         self.exit_type = exit_type
         for c in range(0, numchunks):
@@ -249,31 +256,29 @@ class Encode():
             # address of the next hop.
             if next_hop is None:
                 digest = hashlib.sha256(msg).digest()
-                inner.packet_info.add_payload_digest(digest)
+                inner.packet_info.set_payload_digest(digest)
                 inner.packet_info.set_exit_type(exit_type)
-                length = len(msg)
+                inner.packet_info.set_payload_length(len(msg))
                 cipher = AES.new(inner.aes,
                                  AES.MODE_CFB,
                                  inner.packet_info.iv)
-                body = struct.pack('<H', length) + msg
-                body = cipher.encrypt(body)
-                bodlen = len(body)
-                if bodlen < 10240:
-                    pad_bytes = 10240 - bodlen
-                    body += Random.new().read(pad_bytes)
-                assert len(body) == 10240
+                msg = cipher.encrypt(msg)
+                enclen = len(msg)
+                if enclen < 10240:
+                    pad_bytes = 10240 - enclen
+                    msg += Random.new().read(pad_bytes)
+                assert len(msg) == 10240
             else:
                 ivs = libmix.split_ivs(inner.packet_info.ivs)
                 for e in range(len(headers)):
                     cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[e])
                     headers[e] = cipher.encrypt(headers[e])
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
-                body = cipher.encrypt(body)
+                msg = cipher.encrypt(msg)
                 antitag = hashlib.sha256()
                 antitag.update(headers[0])
-                antitag.update(body)
+                antitag.update(msg)
                 inner.packet_info.add_antitag(antitag.digest())
-
 
             # That's it for old header and payload encoding.  The following
             # section handles the header for this specific step.
@@ -308,13 +313,14 @@ class Encode():
         # headers for padding) with the body.
         binary = (''.join(headers) +
                   Random.new().read((10 - len(headers)) * 1024) +
-                  body)
+                  msg)
         text = "-----BEGIN MIMIX MESSAGE-----\n"
         text += "Version: %s\n\n" % config.get('general', 'version')
-        text +=  binary.encode('base64')
+        text += binary.encode('base64')
         text += "-----END MIMIX MESSAGE-----\n"
         self.next_hop = next_hop
         self.text = text
+
 
 class Decode():
     def __init__(self, keystore):
@@ -377,7 +383,7 @@ class Decode():
                       cipher.decrypt(packet[10240:20480]))
             text = "-----BEGIN MIMIX MESSAGE-----\n"
             text += "Version: %s\n\n" % config.get('general', 'version')
-            text +=  binary.encode('base64')
+            text += binary.encode('base64')
             text += "-----END MIMIX MESSAGE-----\n"
             self.text = text
             self.next_hop = inner.packet_info.next_hop
@@ -385,14 +391,13 @@ class Decode():
 
         elif inner.pkt_type == "1":
             cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
-            (length, body) = struct.unpack("<H10238s",
-                                    cipher.decrypt(packet[10240:20480]))
-            body = body[:length]
-            payload_digest = hashlib.sha256(body).digest()
+            msg = cipher.decrypt(packet[10240:20480])
+            msg = msg[:inner.packet_info.payload_length]
+            payload_digest = hashlib.sha256(msg).digest()
             if inner.packet_info.payload_digest != payload_digest:
                 log.warn("Payload digest does not match hash in packet_info.")
                 raise PacketError("Content Digest Error")
-            self.text = body
+            self.text = msg
             self.exit_type = inner.packet_info.exit_type
             self.is_exit = True
 
@@ -414,7 +419,7 @@ class Decode():
         base64_start = double_nl + 2
         for line in payload[:packet_start].split('\n'):
             if ': ' in line:
-                k, v  = libmix.colonspace(line)
+                k, v = libmix.colonspace(line)
                 data[k] = v
         version = payload[packet_start:packet_end].split("\n", 2)[1]
         if not version.startswith('Version: '):
