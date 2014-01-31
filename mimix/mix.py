@@ -100,20 +100,25 @@ class Exit(object):
         self.chunknum = chunknum
         self.numchunks = numchunks
 
-    def set_payload_digest(self, digest):
-        assert len(digest) == 32
-        self.payload_digest = digest
-
-    def set_payload_length(self, length):
-        assert length <= 10240
-        self.payload_length = length
-
     def set_exit_type(self, etype):
         """
         [ SMTP message          0 ]
         [ Dummy message         1 ]
         """
         self.exit_type = etype
+
+    def set_chunks(self, chunknum, numchunks):
+        assert chunknum <= numchunks
+        self.chunknum = chunknum
+        self.numchunks = numchunks
+
+    def set_payload_length(self, length):
+        assert length <= 10240
+        self.payload_length = length
+
+    def set_payload_digest(self, digest):
+        assert len(digest) == 32
+        self.payload_digest = digest
 
     def packetize(self):
         packet = struct.pack('<BB16s16sBH32s187s',
@@ -226,19 +231,18 @@ class Encode():
 
     def new(self, msg, chain, exit_type=0):
         size = len(msg)
-        if size > 10238 and exit_type != 0:
+        if size > 10240 and exit_type != 0:
             log.warn("Non SMTP message exceeds singe-chunk payload bytes.")
             raise PacketError("Non-SMTP payload size exceeded")
         numchunks = int(math.ceil(size / 10240.0))
-        self.chain = chain
-        self.exit_type = exit_type
-        for c in range(0, numchunks):
-            start = c * 10238
-            end = (c + 1) * 10238
-            self.encode(msg[start:end])
-        sys.exit(0)
+        for c in range(numchunks):
+            start = c * 10240
+            end = (c + 1) * 10240
+            if end > size:
+                end = size
+            self.encode(msg[start:end], chain, exit_type, c, numchunks)
 
-    def encode(self, msg, chain, exit_type=0):
+    def encode(self, msg, chain, exit_type=0, chunknum=1, numchunks=1):
         headers = []
         # next_hop is used to ascertain is this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -256,6 +260,7 @@ class Encode():
             # address of the next hop.
             if next_hop is None:
                 digest = hashlib.sha256(msg).digest()
+                inner.packet_info.set_chunks(chunknum, numchunks)
                 inner.packet_info.set_payload_digest(digest)
                 inner.packet_info.set_exit_type(exit_type)
                 inner.packet_info.set_payload_length(len(msg))

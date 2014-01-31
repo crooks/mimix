@@ -53,7 +53,7 @@ def send_msg(args):
 
     # Encode the message
     m = mix.Encode(k)
-    m.encode(msg, chain.chain)
+    m.new(msg, chain.chain)
 
     if args.stdout:
         sys.stdout.write(m.text)
