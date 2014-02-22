@@ -60,7 +60,7 @@ class Pool():
     def packet_write(self, mixmsg):
         expire = timing.date_future(days=self.expire)
         with open(self.filename(), 'w') as f:
-            f.write("Next Hop: %s\n" % mixmsg.next_hop)
+            f.write("Next Hop: %s\n" % mixmsg.packet_info.next_hop)
             f.write("Expire: %s\n\n" % timing.datestamp(expire))
             f.write(mixmsg.text)
 

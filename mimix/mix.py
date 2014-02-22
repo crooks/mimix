@@ -391,7 +391,6 @@ class Decode():
             text += binary.encode('base64')
             text += "-----END MIMIX MESSAGE-----\n"
             self.text = text
-            self.next_hop = inner.packet_info.next_hop
             self.is_exit = False
 
         elif inner.pkt_type == "1":
@@ -403,8 +402,8 @@ class Decode():
                 log.warn("Payload digest does not match hash in packet_info.")
                 raise PacketError("Content Digest Error")
             self.text = msg
-            self.exit_type = inner.packet_info.exit_type
             self.is_exit = True
+        self.packet_info = inner.packet_info
 
     def packet_import(self, filename):
         """

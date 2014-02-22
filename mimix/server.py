@@ -117,10 +117,16 @@ class Server(Daemon):
             if not m.is_exit:
                 # Not an exit, write it to the outbound pool.
                 self.out_pool.packet_write(m)
-            elif m.exit_type == 0:
+            elif m.packet_info.exit_type == 0:
                 # Exit and SMTP type: Email it.
+                log.debug("MessageID=%s, ChunkNum=%s, NumChunks=%s, "
+                          "ExitType=%s",
+                          m.packet_info.messageid.encode('hex'),
+                          m.packet_info.chunknum,
+                          m.packet_info.numchunks,
+                          m.packet_info.exit_type)
                 sendmail.parse_txt(m.text)
-            elif m.exit_type == 1:
+            elif m.packet_info.exit_type == 1:
                 # It's a dummy
                 log.debug("Discarding dummy message")
             else:
