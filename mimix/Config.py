@@ -51,11 +51,14 @@ config.set('general', 'keylen', 1024)
 config.set('general', 'smtp', 'no')
 config.set('general', 'piddir', os.path.join(basedir, 'run'))
 config.set('general', 'pidfile', 'mimix.pid')
-config.set('general', 'dbdir', os.path.join(basedir, 'db'))
-config.set('general', 'dbfile', 'directory.db')
 config.set('general', 'idage', 28)
 config.set('general', 'version', '0.1-alpha1')
 config.set('general', 'keyvalid', 270)
+
+config.add_section('database')
+config.set('database', 'path', os.path.join(basedir, 'db'))
+config.set('database', 'directory', 'directory.db')
+config.set('database', 'chunks', 'chunks.db')
 
 config.add_section('chain')
 config.set('chain', 'chain', "*,*,*")
@@ -111,7 +114,7 @@ if config.get('general', 'address').endswith('/'):
                                                 'address').rstrip('/'))
 # Make required directories
 mkdir(basedir)
-mkdir(config.get('general', 'dbdir'))
+mkdir(config.get('database', 'path'))
 if config.has_option('general', 'address'):
     # If an address is set, the assumption is made that this node will run as
     # a server.

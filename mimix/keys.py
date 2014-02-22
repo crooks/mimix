@@ -42,6 +42,14 @@ class ChainError(Exception):
 
 class Client(object):
     def __init__(self):
+        dbfile = os.path.join(config.get('database', 'path'),
+                              config.get('database', 'directory'))
+        log.info("Opening Remailer Directory database: %s", dbfile)
+        global con, cur, exe
+        con = sqlite3.connect(dbfile)
+        con.text_factory = str
+        cur = con.cursor()
+        exe = cur.execute
         exe("SELECT name FROM sqlite_master WHERE type='table'")
         data = cur.fetchall()
         if data is None:
@@ -716,12 +724,6 @@ class Pinger(Client):
         con.commit()
 
 
-dbfile = os.path.join(config.get('general', 'dbdir'),
-                      config.get('general', 'dbfile'))
-con = sqlite3.connect(dbfile)
-con.text_factory = str
-cur = con.cursor()
-exe = cur.execute
 log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
     logfmt = config.get('logging', 'format')
