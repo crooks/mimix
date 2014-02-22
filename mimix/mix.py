@@ -49,6 +49,7 @@ class Intermediate(object):
         self.ivs = Random.new().read(9 * 16)
 
     def nexthop(self, address):
+        assert len(address) <= 80
         self.next_hop = address
         self.next_hop_padded = address + ('\x00' * (80 - len(address)))
 
@@ -56,6 +57,7 @@ class Intermediate(object):
         """
         This is a digest of the next-hop header combined with the payload at
         the point in time at which they are presented to the remailer
+r
         processing this header.  The goal is to prevent tagging attacks by
         making this (honest) remailer drop tagged packets before they
         potentially reach the dishonest node that's watching for the tag.
@@ -223,8 +225,6 @@ class Encode():
     """
 
     def __init__(self, keystore):
-        self.rsa_data_size = 512
-        self.is_exit = False
         # Encode and decode operations require the keystore so scoping it
         # in the Class kind of makes sense.
         self.keystore = keystore
@@ -244,7 +244,7 @@ class Encode():
 
     def encode(self, msg, chain, exit_type=0, chunknum=1, numchunks=1):
         headers = []
-        # next_hop is used to ascertain is this is a middle or exit encoding.
+        # next_hop is used to ascertain if this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
         next_hop = None
         # Headers are generated, exit first.  In each chain there will be a
@@ -301,7 +301,8 @@ class Encode():
             # format can accommodate 512 Bytes which results from a 4096 bit
             # keysize being used to encrypt the 32 Byte AES key.
             assert len_rsa <= 512
-            rsa_data += Random.new().read(self.rsa_data_size - len_rsa)
+            # Pad RSA data
+            rsa_data += Random.new().read(512 - len_rsa)
             cipher = AES.new(aes, AES.MODE_CFB, iv)
             newhead = struct.pack('<16sH512s16s384s30s',
                                   rem_info[0].decode('hex'),
@@ -329,7 +330,6 @@ class Encode():
 
 class Decode():
     def __init__(self, keystore):
-        self.is_exit = False
         # Encode and decode operations require the keystore so scoping it
         # in the Class kind of makes sense.
         self.keystore = keystore
