@@ -23,10 +23,12 @@
 import argparse
 import sys
 import os.path
+import math
 import requests
 import keys
 import mix
 import server
+from email.parser import Parser
 from Config import config
 
 
@@ -40,37 +42,59 @@ def send_msg(args):
         sys.exit(1)
     sys.stdout.write("Chain: \"%s\"\n" % chain.chainstr)
 
+    # Create a message object, either from file or stdin.
     if args.filename:
         with open(args.filename, 'r') as f:
-            msg = f.read()
+            msg = Parser().parse(f)
     else:
         sys.stdout.write("Type message here.  Finish with Ctrl-D.\n")
-        msg = sys.stdin.read()
+        msg = Parser().parsestr(sys.stdin.read())
 
+    # Create or override important headers
     if args.recipient:
-        tohead = "To: %s\n" % args.recipient
-        msg = tohead + msg
+        msg['To'] = args.recipient
+    if args.sender:
+        msg['From'] = args.sender
+    if args.subject:
+        msg['Subject'] = args.subject
 
+    plaintext = msg.as_string()
     # Encode the message
-    m = mix.Encode(k)
-    m.new(msg, chain.chain)
+    size = len(plaintext)
+    n = int(math.ceil(size / 10240.0))
+    # Here begins the loop for each message chunk.
+    for c in range(n):
+        if c > 0:
+            # After each chunk the chain needs to be recreated using the
+            # same exit header as the previous pass.
+            chain.create(chainstr=chain.exitstr)
+        cn = c + 1
+        start = c * 10240
+        end = (c + 1) * 10240
+        if end > size:
+            end = size
+        sys.stdout.write("Encoding chunk %s of %s\n" % (cn, n))
+        sys.stdout.write("Bytes %s to %s\n" % (start, end))
+        m = mix.Encode(k)
+        sys.stdout.write("Chain: %s\n" % chain.chain)
+        m.encode(plaintext[start:end], chain.chain, chunknum=cn, numchunks=n)
 
-    if args.stdout:
-        sys.stdout.write(m.text)
-    else:
-        payload = {'base64': m.text}
-        url = '%s/collector.py/msg' % m.next_hop
-        try:
-            # Send the message to the first hop.
-            r = requests.post(url, data=payload)
-            if r.status_code == requests.codes.ok:
-                sys.stdout.write("Message delivered to %s\n" % m.next_hop)
-            else:
-                sys.stderr.write("Delivery to %s failed with status code: %s."
-                                 "\n" % (url, r.status_code))
-        except requests.exceptions.ConnectionError:
-            #TODO Mark down remailer statistics.
-            sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
+        if args.stdout:
+            sys.stdout.write(m.text)
+        else:
+            payload = {'base64': m.text}
+            url = '%s/collector.py/msg' % m.next_hop
+            try:
+                # Send the message to the first hop.
+                r = requests.post(url, data=payload)
+                if r.status_code == requests.codes.ok:
+                    sys.stdout.write("Message delivered to %s\n" % m.next_hop)
+                else:
+                    sys.stderr.write("Delivery to %s failed with status code: "
+                                     "%s.\n" % (url, r.status_code))
+            except requests.exceptions.ConnectionError:
+                #TODO Mark down remailer statistics.
+                sys.stderr.write("Unable to connect to %s.\n" % m.next_hop)
 
 
 def keyring_update(args):
@@ -165,7 +189,11 @@ send.add_argument('--stdout', dest='stdout', action='store_true',
 send.add_argument('--chain', type=str, dest='chainstr',
                   help="Define the Chain a message should use.")
 send.add_argument('--recipient', type=str, dest='recipient',
-                  help="Specify a recipient address")
+        help="Specify a recipient address (To:)")
+send.add_argument('--sender', type=str, dest='sender',
+                  help="Specify a sender address (From:)")
+send.add_argument('--subject', type=str, dest='subject',
+                  help="Add a Subject header to the message.")
 
 update = cmds.add_parser('update', help="Perform keyring updates")
 update.set_defaults(func=keyring_update)
