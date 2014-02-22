@@ -37,7 +37,11 @@ def parse_txt(text):
             s.sendmail(msg['From'], msg['To'], text)
         except smtplib.SMTPRecipientsRefused, e:
             log.info("Email error: %s", e)
-
+    else:
+        if not 'From' in msg:
+            log.info("Message has no From header")
+        if not 'To' in msg:
+            log.info("Message has no To header")
 
 log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
