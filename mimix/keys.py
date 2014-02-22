@@ -661,7 +661,7 @@ class Chain(Client):
         # the exit node selected above.
         exitchain = list(nodes)
         exitchain.append(exit)
-        self.exitchain = ",".join(exitchain)
+        self.exitstr = ",".join(exitchain)
 
         # distance_exclude is a list of the remailers in close proximity to
         # the node currently being selected.  It prevents a single remailer
@@ -738,7 +738,6 @@ if (__name__ == "__main__"):
     c = Chain()
     chain = "*,fleegle,*"
     c.create(chainstr=chain)
-    print c.chain
     print c.chainstr
-    print c.exit
-    print c.chainlen
+    print c.exitstr
+
