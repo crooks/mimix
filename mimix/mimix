@@ -28,6 +28,7 @@ import requests
 import keys
 import mix
 import server
+from Crypto import Random
 from email.parser import Parser
 from Config import config
 
@@ -59,6 +60,7 @@ def send_msg(args):
         msg['Subject'] = args.subject
 
     plaintext = msg.as_string()
+    messageid = Random.new().read(16)
     # Encode the message
     size = len(plaintext)
     n = int(math.ceil(size / 10240.0))
@@ -75,9 +77,13 @@ def send_msg(args):
             end = size
         sys.stdout.write("Encoding chunk %s of %s\n" % (cn, n))
         sys.stdout.write("Bytes %s to %s\n" % (start, end))
+        exit = mix.ExitEncode()
+        exit.set_chunks(messageid, cn, n)
+        exit.set_exit_type(0)
+        exit.set_payload(plaintext[start:end])
         m = mix.Encode(k)
         sys.stdout.write("Chain: %s\n" % chain.chain)
-        m.encode(plaintext[start:end], chain.chain, chunknum=cn, numchunks=n)
+        m.encode(exit, chain.chain)
 
         if args.stdout:
             sys.stdout.write(m.text)
@@ -189,7 +195,7 @@ send.add_argument('--stdout', dest='stdout', action='store_true',
 send.add_argument('--chain', type=str, dest='chainstr',
                   help="Define the Chain a message should use.")
 send.add_argument('--recipient', type=str, dest='recipient',
-        help="Specify a recipient address (To:)")
+                  help="Specify a recipient address (To:)")
 send.add_argument('--sender', type=str, dest='sender',
                   help="Specify a sender address (From:)")
 send.add_argument('--subject', type=str, dest='subject',

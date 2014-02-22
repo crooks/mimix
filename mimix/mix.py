@@ -37,23 +37,21 @@ class PacketError(Exception):
     pass
 
 
-class Intermediate(object):
+class IntermediateEncode(object):
     """
     Packet type 0 (intermediate hop):
     [ 9 Initialization vectors   144 bytes ]
     [ Next address                80 bytes ]
     [ Anti-tag digest             32 bytes ]
     """
-    def new(self):
+    def __init__(self, next_hop):
         self.packet_type = "0"
-        self.ivs = Random.new().read(9 * 16)
+        self.ivsstr = Random.new().read(9 * 16)
+        self.ivs = [self.ivsstr[i:i+16] for i in range(0, 9, 16)]
+        self.next_hop = next_hop
+        self.next_hop_padded = next_hop + ('\x00' * (80 - len(address)))
 
-    def nexthop(self, address):
-        assert len(address) <= 80
-        self.next_hop = address
-        self.next_hop_padded = address + ('\x00' * (80 - len(address)))
-
-    def add_antitag(self, digest):
+    def set_antitag(self, digest):
         """
         This is a digest of the next-hop header combined with the payload at
         the point in time at which they are presented to the remailer
@@ -66,19 +64,22 @@ r
         self.antitag = digest
 
     def packetize(self):
-        assert len(self.ivs) == 144
+        assert len(self.ivsstr) == 144
         assert len(self.next_hop_padded) == 80
         assert len(self.antitag) == 32
-        return self.ivs + self.next_hop_padded + self.antitag
+        return self.ivsstr + self.next_hop_padded + self.antitag
 
-    def decode(self, packet):
+
+class IntermediateDecode(object):
+    def __init__(self, packet):
         assert len(packet) == 256
-        self.ivs = packet[:144]
+        ivsstr = packet[:144]
+        self.ivs = [ivsstr[i:i+16] for i in range(0, 9, 16)]
         self.next_hop = packet[144:144 + 80].rstrip('\x00')
         self.antitag = packet[144 + 80:]
 
 
-class Exit(object):
+class ExitEncode(object):
     """
     Packet type 1 (final hop):
     [ Chunk number                 1 byte  ]
@@ -90,37 +91,28 @@ class Exit(object):
     [ Payload digest              32 bytes ]
     [ Padding                    187 bytes ]
     """
-    def new(self):
+    def __init__(self):
         self.packet_type = "1"
-        self.chunknum = 1
-        self.numchunks = 1
-        self.messageid = Random.new().read(16)
         self.iv = Random.new().read(16)
 
-    def chunks(self, chunknum, numchunks):
-        assert chunknum <= numchunks
-        self.chunknum = chunknum
-        self.numchunks = numchunks
-
-    def set_exit_type(self, etype):
+    def set_exit_type(self, exit_type):
         """
         [ SMTP message          0 ]
         [ Dummy message         1 ]
         """
-        self.exit_type = etype
+        self.exit_type = exit_type
 
-    def set_chunks(self, chunknum, numchunks):
+    def set_chunks(self, messageid, chunknum, numchunks):
         assert chunknum <= numchunks
+        self.messageid = messageid
         self.chunknum = chunknum
         self.numchunks = numchunks
 
-    def set_payload_length(self, length):
-        assert length <= 10240
-        self.payload_length = length
-
-    def set_payload_digest(self, digest):
-        assert len(digest) == 32
-        self.payload_digest = digest
+    def set_payload(self, payload):
+        self.payload_length = len(payload)
+        assert self.payload_length <= 10240
+        self.payload = payload
+        self.payload_digest = hashlib.sha256(payload).digest()
 
     def packetize(self):
         packet = struct.pack('<BB16s16sBH32s187s',
@@ -135,7 +127,9 @@ class Exit(object):
         assert len(packet) == 256
         return packet
 
-    def decode(self, packet):
+
+class ExitDecode(object):
+    def __init__(self, packet):
         assert len(packet) == 256
         (self.chunknum,
          self.numchunks,
@@ -147,7 +141,7 @@ class Exit(object):
          _) = struct.unpack('<BB16s16sBH32s187s', packet)
 
 
-class Inner(object):
+class InnerEncode(object):
     """
     [ Packet ID                            16 bytes ]
     [ AES key                              32 bytes ]
@@ -158,19 +152,13 @@ class Inner(object):
     [ Message digest                       64 bytes ]
     """
 
-    def new(self, next_hop):
+    def __init__(self, next_hop):
         self.packet_id = Random.new().read(16)
         # This AES key is used to encrypt the other header sections and the
         # Message Payload.
         self.aes = Random.new().read(32)
-        if next_hop is None:
-            packet_info = Exit()
-            packet_info.new()
-            self.packet_info = packet_info
-        else:
-            packet_info = Intermediate()
-            packet_info.new()
-            packet_info.nexthop(next_hop)
+        if next_hop is not None:
+            packet_info = IntermediateEncode(next_hop)
             self.packet_info = packet_info
         # Days since Epoch
         self.timestamp = timing.epoch_days()
@@ -188,7 +176,9 @@ class Inner(object):
         assert len(packet) == 384
         return packet
 
-    def decode(self, packet):
+
+class InnerDecode():
+    def __init__(self, packet):
         assert len(packet) == 384
         (packet_id, aes, pkt_type, pi, timestamp, null,
          digest) = struct.unpack('<16s32sc256sH13s64s', packet)
@@ -196,11 +186,9 @@ class Inner(object):
             raise PacketError("Digest mismatch on encrypted header")
         self.aes = aes
         if pkt_type == "0":
-            packet_info = Intermediate()
-            packet_info.decode(pi)
+            packet_info = IntermediateDecode(pi)
         elif pkt_type == "1":
-            packet_info = Exit()
-            packet_info.decode(pi)
+            packet_info = ExitDecode(pi)
         else:
             raise PacketError("Unknown packet type (%s)" % pkt_type)
         self.pkt_type = pkt_type
@@ -229,20 +217,7 @@ class Encode():
         # in the Class kind of makes sense.
         self.keystore = keystore
 
-    def new(self, msg, chain, exit_type=0):
-        size = len(msg)
-        if size > 10240 and exit_type != 0:
-            log.warn("Non SMTP message exceeds singe-chunk payload bytes.")
-            raise PacketError("Non-SMTP payload size exceeded")
-        numchunks = int(math.ceil(size / 10240.0))
-        for c in range(numchunks):
-            start = c * 10240
-            end = (c + 1) * 10240
-            if end > size:
-                end = size
-            self.encode(msg[start:end], chain, exit_type, c, numchunks)
-
-    def encode(self, msg, chain, exit_type=0, chunknum=1, numchunks=1):
+    def encode(self, exit, chain):
         headers = []
         # next_hop is used to ascertain if this is a middle or exit encoding.
         # If there is no next_hop, the encoding must be an exit.
@@ -253,37 +228,33 @@ class Encode():
         # 2) Existing headers are encrypted using keys from Step.1.
         # 3) The payload is encrypted using keys from Step.1.
         for h in range(len(chain)):
-            inner = Inner()
-            inner.new(next_hop)
+            inner = InnerEncode(next_hop)
             # If next_hop is None, this is an Exit message.  This is only True
             # during the first iteration, after which next_hop contains the
             # address of the next hop.
             if next_hop is None:
-                digest = hashlib.sha256(msg).digest()
-                inner.packet_info.set_chunks(chunknum, numchunks)
-                inner.packet_info.set_payload_digest(digest)
-                inner.packet_info.set_exit_type(exit_type)
-                inner.packet_info.set_payload_length(len(msg))
+                inner.packet_info = exit
                 cipher = AES.new(inner.aes,
                                  AES.MODE_CFB,
                                  inner.packet_info.iv)
-                msg = cipher.encrypt(msg)
+                msg = cipher.encrypt(inner.packet_info.payload)
                 enclen = len(msg)
                 if enclen < 10240:
                     pad_bytes = 10240 - enclen
                     msg += Random.new().read(pad_bytes)
                 assert len(msg) == 10240
             else:
-                ivs = libmix.split_ivs(inner.packet_info.ivs)
                 for e in range(len(headers)):
-                    cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[e])
+                    cipher = AES.new(inner.aes, AES.MODE_CFB,
+                                     inner.packet_info.ivs[e])
                     headers[e] = cipher.encrypt(headers[e])
+                # The payload always gets encrypted with the final IV
                 cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
                 msg = cipher.encrypt(msg)
                 antitag = hashlib.sha256()
                 antitag.update(headers[0])
                 antitag.update(msg)
-                inner.packet_info.add_antitag(antitag.digest())
+                inner.packet_info.set_antitag(antitag.digest())
 
             # That's it for old header and payload encoding.  The following
             # section handles the header for this specific step.
@@ -357,8 +328,7 @@ class Decode():
         iv = tophead[530:546]
         # Now the inner header can be decrypted.
         cipher = AES.new(aes, AES.MODE_CFB, iv)
-        inner = Inner()
-        inner.decode(cipher.decrypt(tophead[546:546 + 384]))
+        inner = InnerDecode(cipher.decrypt(tophead[546:546 + 384]))
         if self.keystore.idlog(inner.packet_id):
             raise PacketError("Packet ID collision")
         # If this is an intermediate message, the remaining 9 header sections
@@ -374,14 +344,15 @@ class Decode():
                 log.warn("Anti-tag digest failure.  This message might have "
                          "been tampered with.")
                 raise PacketError("Anti-tag digest mismatch")
-            ivs = libmix.split_ivs(inner.packet_info.ivs)
             try:
                 self.keystore.middle_spy(inner.packet_info.next_hop)
             except keystore.KeyImportError, e:
                 log.info("Key import fail: %s", e)
             for h in range(9):
-                cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[h])
+                cipher = AES.new(inner.aes, AES.MODE_CFB,
+                                 inner.packet_info.ivs[h])
                 headers[h] = cipher.decrypt(headers[h])
+            # Use the final IV to decrypt the payload
             cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
             binary = (''.join(headers) +
                       Random.new().read(1024) +

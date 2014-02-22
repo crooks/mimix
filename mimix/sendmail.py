@@ -28,13 +28,13 @@ from email.parser import Parser
 from email.mime.text import MIMEText
 
 
-def parse_txt(text):
-    msg = Parser().parsestr(text)
+def send(mixobj):
+    msg = Parser().parsestr(mixobj.text)
     if msg['From'] and msg['To']:
         s = smtplib.SMTP('localhost')
         log.debug("Delivering message to: %s", msg['To'])
         try:
-            s.sendmail(msg['From'], msg['To'], text)
+            s.sendmail(msg['From'], msg['To'], msg.as_string())
         except smtplib.SMTPRecipientsRefused, e:
             log.info("Email error: %s", e)
     else:

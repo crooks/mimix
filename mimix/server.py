@@ -125,7 +125,11 @@ class Server(Daemon):
                           m.packet_info.chunknum,
                           m.packet_info.numchunks,
                           m.packet_info.exit_type)
-                sendmail.parse_txt(m.text)
+                if (m.packet_info.chunknum == 1 and
+                        m.packet_info.numchunks == 1):
+                    sendmail.send(m)
+                else:
+                    log.debug("Multipart message. Doing chunk processing.")
             elif m.packet_info.exit_type == 1:
                 # It's a dummy
                 log.debug("Discarding dummy message")
@@ -161,7 +165,7 @@ class Server(Daemon):
                 continue
             try:
                 expire = timing.dateobj(packet_data['expire'])
-            except ValueError,e:
+            except ValueError, e:
                 log.error("Invalid Expire: %s", e)
                 self.out_pool.delete(filename)
                 continue
@@ -195,7 +199,8 @@ class Server(Daemon):
                              filename, recipient, r.status_code)
             except requests.exceptions.ConnectionError:
                 #TODO Mark down remailer statistics.
-                log.info("Unable to connect to %s.  Will keep trying.", recipient)
+                log.info("Unable to connect to %s.  Will keep trying.",
+                         recipient)
 
     def validity_check(self):
         if not config.has_option('general', 'name'):
@@ -213,10 +218,14 @@ class Server(Daemon):
             log.debug("Injecting Dummy Message into outbound queue.")
             chain = keys.Chain()
             chain.create('*,*,*,*')
-            msg = "From: dummy@dummy\nTo: dummy@dummy\n\npayload"
             # Encode the message
+            exit = mix.ExitEncode()
+            # chunks takes: MessageID, ChunkNum, NumChunks
+            exit.set_chunks(Random.new().read(16), 1, 1)
+            exit.set_exit_type(1)
+            exit.set_payload("From: dummy@dummy\nTo: dummy@dummy\n\npayload")
             m = mix.Encode(self.k)
-            m.encode(msg, chain.chain, exit_type=1)
+            m.encode(exit, chain.chain)
             self.out_pool.packet_write(m)
 
 
