@@ -117,24 +117,26 @@ class Server(Daemon):
             if not m.is_exit:
                 # Not an exit, write it to the outbound pool.
                 self.out_pool.packet_write(m)
-            elif m.packet_info.exit_type == 0:
-                # Exit and SMTP type: Email it.
-                log.debug("MessageID=%s, ChunkNum=%s, NumChunks=%s, "
-                          "ExitType=%s",
+            else:
+                log.debug("Exit Message: File=%s, MessageID=%s, ChunkNum=%s,"
+                          " NumChunks=%s, ExitType=%s",
+                          os.path.basename(filename),
                           m.packet_info.messageid.encode('hex'),
                           m.packet_info.chunknum,
                           m.packet_info.numchunks,
                           m.packet_info.exit_type)
-                if (m.packet_info.chunknum == 1 and
-                        m.packet_info.numchunks == 1):
-                    sendmail.send(m)
+                if m.packet_info.exit_type == 0:
+                    # Exit and SMTP type: Email it.
+                    if (m.packet_info.chunknum == 1 and
+                            m.packet_info.numchunks == 1):
+                        sendmail.send(m)
+                    else:
+                        log.debug("Multipart message. Doing chunk processing.")
+                elif m.packet_info.exit_type == 1:
+                    # It's a dummy
+                    log.debug("Discarding dummy.")
                 else:
-                    log.debug("Multipart message. Doing chunk processing.")
-            elif m.packet_info.exit_type == 1:
-                # It's a dummy
-                log.debug("Discarding dummy message")
-            else:
-                log.warn("Unknown Exit_Type, discarding.")
+                    log.warn("Unknown Exit_Type, discarding.")
             self.in_pool.delete(filename)
 
     def process_outbound(self):
@@ -189,7 +191,7 @@ class Server(Daemon):
                 # probably a lot of failure conditions to handle at this point.
                 recipient = '%s/collector.py/msg' % packet_data['next_hop']
                 log.debug("Attempting delivery of %s to %s",
-                          filename, packet_data['next_hop'])
+                          os.path.basename(filename), packet_data['next_hop'])
                 r = requests.post(recipient, data=payload)
                 if r.status_code == requests.codes.ok:
                     self.out_pool.delete(filename)
@@ -215,9 +217,9 @@ class Server(Daemon):
 
     def inject_dummy(self, odds):
         if random.randint(1, 100) <= odds:
-            log.debug("Injecting Dummy Message into outbound queue.")
             chain = keys.Chain()
             chain.create('*,*,*,*')
+            log.debug("Injecting Dummy with Chain: %s", chain.chainstr)
             # Encode the message
             exit = mix.ExitEncode()
             # chunks takes: MessageID, ChunkNum, NumChunks

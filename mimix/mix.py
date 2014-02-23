@@ -47,9 +47,9 @@ class IntermediateEncode(object):
     def __init__(self, next_hop):
         self.packet_type = "0"
         self.ivsstr = Random.new().read(9 * 16)
-        self.ivs = [self.ivsstr[i:i+16] for i in range(0, 9, 16)]
+        self.ivs = [self.ivsstr[i:i+16] for i in range(0, 144, 16)]
         self.next_hop = next_hop
-        self.next_hop_padded = next_hop + ('\x00' * (80 - len(address)))
+        self.next_hop_padded = next_hop + ('\x00' * (80 - len(next_hop)))
 
     def set_antitag(self, digest):
         """
@@ -74,7 +74,7 @@ class IntermediateDecode(object):
     def __init__(self, packet):
         assert len(packet) == 256
         ivsstr = packet[:144]
-        self.ivs = [ivsstr[i:i+16] for i in range(0, 9, 16)]
+        self.ivs = [ivsstr[i:i+16] for i in range(0, 144, 16)]
         self.next_hop = packet[144:144 + 80].rstrip('\x00')
         self.antitag = packet[144 + 80:]
 
@@ -249,7 +249,8 @@ class Encode():
                                      inner.packet_info.ivs[e])
                     headers[e] = cipher.encrypt(headers[e])
                 # The payload always gets encrypted with the final IV
-                cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
+                cipher = AES.new(inner.aes, AES.MODE_CFB,
+                                 inner.packet_info.ivs[8])
                 msg = cipher.encrypt(msg)
                 antitag = hashlib.sha256()
                 antitag.update(headers[0])
@@ -295,7 +296,7 @@ class Encode():
         text += "Version: %s\n\n" % config.get('general', 'version')
         text += binary.encode('base64')
         text += "-----END MIMIX MESSAGE-----\n"
-        self.next_hop = next_hop
+        self.packet_info = inner.packet_info
         self.text = text
 
 
@@ -353,7 +354,8 @@ class Decode():
                                  inner.packet_info.ivs[h])
                 headers[h] = cipher.decrypt(headers[h])
             # Use the final IV to decrypt the payload
-            cipher = AES.new(inner.aes, AES.MODE_CFB, ivs[8])
+            cipher = AES.new(inner.aes, AES.MODE_CFB,
+                             inner.packet_info.ivs[8])
             binary = (''.join(headers) +
                       Random.new().read(1024) +
                       cipher.decrypt(packet[10240:20480]))
