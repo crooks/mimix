@@ -305,7 +305,7 @@ class Encode():
         self.text = text
         # Record the entry point into the chain.  This will be the address of
         # the remailer that the message is finally encrypted to.
-        self.entry_address = next_hop
+        self.send_to_address = next_hop
 
 
 class Decode():
@@ -372,6 +372,7 @@ class Decode():
             text += binary.encode('base64')
             text += "-----END MIMIX MESSAGE-----\n"
             self.text = text
+            self.send_to_address = inner.packet_info.next_hop
             self.is_exit = False
 
         elif inner.pkt_type == "1":
