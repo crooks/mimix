@@ -54,6 +54,7 @@ config.set('general', 'pidfile', 'mimix.pid')
 config.set('general', 'idage', 28)
 config.set('general', 'version', '0.1-alpha1')
 config.set('general', 'keyvalid', 270)
+config.set('general', 'sender', 'Anonymous Remailer <anon@invalid>')
 
 config.add_section('database')
 config.set('database', 'path', os.path.join(basedir, 'db'))
