@@ -40,15 +40,6 @@ def send_msg(args):
     # messages.
     with sqlite3.connect(dbkeys()) as conn:
         conn.text_factory = str
-        # Chain creation
-        chain = Chain.Chain(conn)
-        try:
-            chain.create(chainstr=args.chainstr)
-        except Chain.ChainError, e:
-            sys.stderr.write("Chain Error: %s\n" % e)
-            sys.exit(1)
-        sys.stdout.write("Chain: \"%s\"\n" % chain.chainstr)
-
         # Create a message object, either from file or stdin.
         if args.filename:
             with open(args.filename, 'r') as f:
@@ -64,6 +55,22 @@ def send_msg(args):
             msg['From'] = args.sender
         if args.subject:
             msg['Subject'] = args.subject
+        if 'To' not in msg:
+            sys.stderr.write("Message has no recipient specified.\nUse "
+                             "\"--recipient RECIPIENT_ADDRESS\" "
+                             "to add one.\n")
+            sys.exit(1)
+        if 'From' not in msg:
+            msg['From'] = config.get('general', 'sender')
+
+        # Chain creation
+        chain = Chain.Chain(conn)
+        try:
+            chain.create(chainstr=args.chainstr)
+        except Chain.ChainError, e:
+            sys.stderr.write("Chain Error: %s\n" % e)
+            sys.exit(1)
+        sys.stdout.write("Chain: \"%s\"\n" % chain.chainstr)
 
         plaintext = msg.as_string()
         messageid = Random.new().read(16)
