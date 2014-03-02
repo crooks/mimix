@@ -23,14 +23,13 @@ import struct
 import timing
 import hashlib
 import logging
-import math
-import Pool
+import os.path
 import sys
+import libkeys
 from Config import config
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
-import libmix
 
 
 class PacketError(Exception):
@@ -64,10 +63,10 @@ r
         self.antitag = digest
 
     def packetize(self):
-        assert len(self.ivsstr) == 144
-        assert len(self.next_hop_padded) == 80
-        assert len(self.antitag) == 32
-        return self.ivsstr + self.next_hop_padded + self.antitag
+        packet = struct.pack('144s80s32s', self.ivsstr,
+                                           str(self.next_hop_padded),
+                                           self.antitag)
+        return packet
 
 
 class IntermediateDecode(object):
@@ -212,10 +211,10 @@ class Encode():
     [ Content                    10238 bytes ]
     """
 
-    def __init__(self, keystore):
+    def __init__(self, conn):
         # Encode and decode operations require the keystore so scoping it
         # in the Class kind of makes sense.
-        self.keystore = keystore
+        self.conn = conn
 
     def encode(self, exit, chain):
         headers = []
@@ -265,7 +264,7 @@ class Encode():
             aes = Random.new().read(32)
             iv = Random.new().read(16)
             # get_pubkey() returns a Tuple of (keyid, address, pubkey)
-            rem_info = self.keystore.get_public(this_hop_name)
+            rem_info = libkeys.get_public(self.conn, this_hop_name)
             cipher = PKCS1_OAEP.new(rem_info[2])
             rsa_data = cipher.encrypt(aes)
             len_rsa = len(rsa_data)
@@ -310,7 +309,7 @@ class Decode():
         assert len(packet) == 20480
         self.is_exit = False
         # Split the header component into its 10 distinct headers.
-        headers = libmix.split_headers(packet[:10240])
+        headers = [packet[i:i+1024] for i in range(0, 10240, 1024)]
         # The first header gets processed and removed at this hop.
         tophead = headers.pop(0)
         if hashlib.sha512(tophead[:960]).digest() != tophead[960:]:
@@ -396,17 +395,22 @@ class Decode():
         base64_start = double_nl + 2
         for line in payload[:packet_start].split('\n'):
             if ': ' in line:
-                k, v = libmix.colonspace(line)
+                k, v = self._colonspace(line)
                 data[k] = v
         version = payload[packet_start:packet_end].split("\n", 2)[1]
         if not version.startswith('Version: '):
             raise ValueError('Version header not found')
-        k, v = libmix.colonspace(version)
+        k, v = self._colonspace(version)
         data[k] = v
         data['packet'] = payload[packet_start:packet_end]
         data['binary'] = payload[base64_start:base64_end].decode('base64')
         assert len(data['binary']) == 20480
         return data
+
+    def _colonspace(self, data):
+        key, value = data.split(': ', 1)
+        key = key.strip().lower().replace(' ', '_')
+        return key, value.strip()
 
 
 log = logging.getLogger("mimix.%s" % __name__)
@@ -420,3 +424,8 @@ if (__name__ == "__main__"):
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
     log.addHandler(handler)
+    dbkeys = os.path.join(config.get('database', 'path'),
+                          config.get('database', 'directory'))
+    import sqlite3
+    with sqlite3.connect(dbkeys) as conn:
+        mix = Encode(conn)

@@ -24,12 +24,14 @@ import argparse
 import sys
 import logging
 import os.path
+import sqlite3
 import requests
 from Config import config
 import mix
 import Pool
 import timing
 import keys
+import Chain
 import sendmail
 from daemon import Daemon
 from Crypto import Random
@@ -57,7 +59,6 @@ class Server(Daemon):
             handler = logging.FileHandler(filename, mode='a')
         handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
         log.addHandler(handler)
-        k = keys.Server()
         # The inbound pool always processes every message.
         in_pool = Pool.Pool(name='inpool',
                             pooldir=config.get('pool', 'indir'))
@@ -67,24 +68,29 @@ class Server(Daemon):
                              rate=config.getint('pool', 'rate'),
                              size=config.getint('pool', 'size'))
         Random.atfork()
-        self.k = k
         self.in_pool = in_pool
         self.out_pool = out_pool
-        # Loop until a SIGTERM or Ctrl-C is received.
-        while True:
-            # Every loop, check if it's yet time to perform daily housekeeping
-            # actions.  This also clears the Secret Key cache.
-            k.daily_events()
-            # Process outbound messages first.  This ensures that no
-            # message is received, processed and sent during the same
-            # iteration.  Not sure if doing so would be a bad thing for
-            # anonymity but not doing is it very unlikely to be bad.
-            if out_pool.trigger():
-                self.process_outbound()
-            self.process_inbound()
-            # Some consideration should probably given to pool trigger
-            # times rather than stubbornly looping every minute.
-            timing.sleep(60)
+        dbkeys = os.path.join(config.get('database', 'path'),
+                              config.get('database', 'directory'))
+        with sqlite3.connect(dbkeys) as conn:
+            keyserv = keys.Server(conn)
+            self.keyserv = keyserv
+            self.conn = conn
+            # Loop until a SIGTERM or Ctrl-C is received.
+            while True:
+                # Every loop, check if it's yet time to perform daily
+                # housekeeping actions.  This also clears the Secret Key cache.
+                keyserv.daily_events()
+                # Process outbound messages first.  This ensures that no
+                # message is received, processed and sent during the same
+                # iteration.  Not sure if doing so would be a bad thing for
+                # anonymity but not doing is it very unlikely to be bad.
+                if out_pool.trigger():
+                    self.process_outbound()
+                self.process_inbound()
+                # Some consideration should probably given to pool trigger
+                # times rather than stubbornly looping every minute.
+                timing.sleep(60)
 
     def process_inbound(self):
         """
@@ -97,7 +103,7 @@ class Server(Daemon):
         self.inject_dummy(config.getint('pool', 'indummy'))
         generator = self.in_pool.select_all()
         for filename in generator:
-            m = mix.Decode(self.k)
+            m = mix.Decode(self.keyserv)
             try:
                 packet_data = m.packet_import(filename)
             except ValueError, e:
@@ -150,7 +156,7 @@ class Server(Daemon):
         generator = self.out_pool.select_subset()
         self.inject_dummy(config.getint('pool', 'outdummy'))
         for filename in generator:
-            m = mix.Decode(self.k)
+            m = mix.Decode(self.keyserv)
             try:
                 packet_data = m.packet_import(filename)
             except ValueError, e:
@@ -217,8 +223,8 @@ class Server(Daemon):
 
     def inject_dummy(self, odds):
         if random.randint(1, 100) <= odds:
-            chain = keys.Chain()
-            chain.create('*,*,*,*')
+            chain = Chain.Chain(self.conn)
+            chain.create(config.get('pool', 'dummychain'))
             log.debug("Injecting Dummy with Chain: %s", chain.chainstr)
             # Encode the message
             exit = mix.ExitEncode()
@@ -226,7 +232,7 @@ class Server(Daemon):
             exit.set_chunks(Random.new().read(16), 1, 1)
             exit.set_exit_type(1)
             exit.set_payload("From: dummy@dummy\nTo: dummy@dummy\n\npayload")
-            m = mix.Encode(self.k)
+            m = mix.Encode(self.conn)
             m.encode(exit, chain.chain)
             self.out_pool.packet_write(m)
 
