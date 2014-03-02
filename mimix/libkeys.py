@@ -204,7 +204,7 @@ def conf_fetch(conn, address):
     if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
         raise KeyImportError("Key digest error")
 
-    # Test we have all the required key components required to perform
+    # Test we have all the key components required to perform
     # the forthcoming DB updates.
     required_keys = ['name', 'address', 'keyid', 'validfr', 'validto',
                      'smtp', 'pubkey']

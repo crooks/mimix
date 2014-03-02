@@ -263,7 +263,7 @@ class Encode():
             # encrypt the 384 Byte inner header part.
             aes = Random.new().read(32)
             iv = Random.new().read(16)
-            # get_pubkey() returns a Tuple of (keyid, address, pubkey)
+            # get_public() returns a Tuple of (keyid, address, pubkey)
             rem_info = libkeys.get_public(self.conn, this_hop_name)
             cipher = PKCS1_OAEP.new(rem_info[2])
             rsa_data = cipher.encrypt(aes)
@@ -295,8 +295,10 @@ class Encode():
         text += "Version: %s\n\n" % config.get('general', 'version')
         text += binary.encode('base64')
         text += "-----END MIMIX MESSAGE-----\n"
-        self.packet_info = inner.packet_info
         self.text = text
+        # Record the entry point into the chain.  This will be the address of
+        # the remailer that the message is finally encrypted to.
+        self.entry_address = next_hop
 
 
 class Decode():

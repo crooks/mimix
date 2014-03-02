@@ -95,20 +95,20 @@ def send_msg(args):
                 sys.stdout.write(m.text)
             else:
                 payload = {'base64': m.text}
-                url = '%s/collector.py/msg' % m.packet_info.next_hop
+                url = '%s/collector.py/msg' % m.entry_address
                 try:
                     # Send the message to the first hop.
                     r = requests.post(url, data=payload)
                     if r.status_code == requests.codes.ok:
                         sys.stdout.write("Message delivered to %s\n"
-                                         % m.packet_info.next_hop)
+                                         % m.entry_address)
                     else:
                         sys.stderr.write("Delivery to %s failed with status "
                                          "code: %s.\n" % (url, r.status_code))
                 except requests.exceptions.ConnectionError:
                     #TODO Mark down remailer statistics.
                     sys.stderr.write("Unable to connect to %s.\n"
-                                     % m.packet_info.next_hop)
+                                     % m.entry_address)
 
 
 def keyring_update(args):
