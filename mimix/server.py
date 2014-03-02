@@ -135,7 +135,7 @@ class Server(Daemon):
                     # Exit and SMTP type: Email it.
                     if (m.packet_info.chunknum == 1 and
                             m.packet_info.numchunks == 1):
-                        sendmail.send(m)
+                        sendmail.send(m.packet_info)
                     else:
                         log.debug("Multipart message. Doing chunk processing.")
                 elif m.packet_info.exit_type == 1:

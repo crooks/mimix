@@ -28,8 +28,8 @@ from email.parser import Parser
 from email.mime.text import MIMEText
 
 
-def send(mixobj):
-    msg = Parser().parsestr(mixobj.text)
+def send(exit_info):
+    msg = Parser().parsestr(exit_info.payload)
     if msg['From'] and msg['To']:
         s = smtplib.SMTP('localhost')
         log.debug("Delivering message to: %s", msg['To'])

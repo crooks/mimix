@@ -139,6 +139,13 @@ class ExitDecode(object):
          self.payload_digest,
          _) = struct.unpack('<BB16s16sBH32s187s', packet)
 
+    def set_payload(self, payload):
+        self.payload = payload[:self.payload_length]
+        payload_digest = hashlib.sha256(self.payload).digest()
+        if payload_digest != self.payload_digest:
+            log.warn("Payload digest does not match hash in packet_info.")
+            raise PacketError("Content Digest Error")
+
 
 class InnerEncode(object):
     """
@@ -369,13 +376,7 @@ class Decode():
 
         elif inner.pkt_type == "1":
             cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
-            msg = cipher.decrypt(packet[10240:20480])
-            msg = msg[:inner.packet_info.payload_length]
-            payload_digest = hashlib.sha256(msg).digest()
-            if inner.packet_info.payload_digest != payload_digest:
-                log.warn("Payload digest does not match hash in packet_info.")
-                raise PacketError("Content Digest Error")
-            self.text = msg
+            inner.packet_info.set_payload(cipher.decrypt(packet[10240:20480]))
             self.is_exit = True
         self.packet_info = inner.packet_info
 
