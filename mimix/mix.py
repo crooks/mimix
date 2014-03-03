@@ -53,8 +53,7 @@ class IntermediateEncode(object):
     def set_antitag(self, digest):
         """
         This is a digest of the next-hop header combined with the payload at
-        the point in time at which they are presented to the remailer
-r
+        the point in time at which they are presented to the remailer for
         processing this header.  The goal is to prevent tagging attacks by
         making this (honest) remailer drop tagged packets before they
         potentially reach the dishonest node that's watching for the tag.

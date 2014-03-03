@@ -26,12 +26,14 @@ import logging
 import os.path
 import sqlite3
 import requests
+from email.parser import Parser
 from Config import config
 import mix
 import Pool
 import timing
 import keys
 import Chain
+import chunker
 import sendmail
 from daemon import Daemon
 from Crypto import Random
@@ -74,7 +76,9 @@ class Server(Daemon):
                               config.get('database', 'directory'))
         with sqlite3.connect(dbkeys) as conn:
             keyserv = keys.Server(conn)
+            chunks = chunker.Chunker(conn)
             self.keyserv = keyserv
+            self.chunks = chunks
             self.conn = conn
             # Loop until a SIGTERM or Ctrl-C is received.
             while True:
@@ -135,9 +139,12 @@ class Server(Daemon):
                     # Exit and SMTP type: Email it.
                     if (m.packet_info.chunknum == 1 and
                             m.packet_info.numchunks == 1):
-                        sendmail.send(m.packet_info)
+                        msg = Parser().parsestr(m.packet_info.payload)
+                        sendmail.sendmsg(msg)
                     else:
                         log.debug("Multipart message. Doing chunk processing.")
+                        self.chunks.insert(m.packet_info)
+                        self.chunks.assemble()
                 elif m.packet_info.exit_type == 1:
                     # It's a dummy
                     log.debug("Discarding dummy.")
