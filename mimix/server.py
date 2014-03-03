@@ -61,6 +61,7 @@ class Server(Daemon):
             handler = logging.FileHandler(filename, mode='a')
         handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
         log.addHandler(handler)
+        event = EventTimer("Event")
         # The inbound pool always processes every message.
         in_pool = Pool.Pool(name='inpool',
                             pooldir=config.get('pool', 'indir'))
@@ -84,7 +85,12 @@ class Server(Daemon):
             while True:
                 # Every loop, check if it's yet time to perform daily
                 # housekeeping actions.  This also clears the Secret Key cache.
-                keyserv.daily_events()
+                if event.daily_trigger():
+                    keyserv.daily_events()
+                    expired = chunks.expire()
+                    if expired > 0:
+                        log.info("Expired %s chunks from the Chunk DB",
+                                 expired)
                 # Process outbound messages first.  This ensures that no
                 # message is received, processed and sent during the same
                 # iteration.  Not sure if doing so would be a bad thing for
@@ -242,6 +248,20 @@ class Server(Daemon):
             m = mix.Encode(self.conn)
             m.encode(exit, chain.chain)
             self.out_pool.packet_write(m)
+
+
+class EventTimer(object):
+    def __init__(self, name):
+        self.log = logging.getLogger("mimix.%s" % name)
+        self.log.info("Initializing Event Handler called \"%s\".", name)
+        self.daily_stamp = timing.today()
+
+    def daily_trigger(self):
+        if self.daily_stamp < timing.today():
+            # Time to do things!
+            self.daily_stamp = timing.today()
+            return True
+        return False
 
 
 if (__name__ == "__main__"):

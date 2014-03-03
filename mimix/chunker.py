@@ -90,6 +90,16 @@ class Chunker(object):
             log.info("Deleted %s chunks for MsgID: %s", deleted, msgid)
         self.conn.commit()
 
+    def expire(self):
+        """
+        Expire chunks in the DB that are more than 28 days old.  It's unlikely
+        that missing chunks are going to turn up now.
+        """
+        criteria = (timing.date_past(days=28),)
+        self.exe('DELETE FROM chunker WHERE inserted < ?', criteria)
+        self.conn.commit()
+        return self.cursor.rowcount
+
     def count(self, msgid):
         """
         """

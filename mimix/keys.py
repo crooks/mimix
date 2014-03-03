@@ -40,11 +40,9 @@ class Server(object):
         self.conn = conn
         self.cursor = conn.cursor()
         self.exe = self.cursor.execute
-        # On startup, force a daily run
-        self.daily_trigger = timing.today()
         if 'idlog' not in libkeys.list_tables(conn):
             self.create_idlog()
-        self.daily_events(force=True)
+        self.daily_events()
 
     def idcount(self):
         self.exe('SELECT COUNT(pid) FROM idlog')
@@ -137,18 +135,11 @@ class Server(object):
                                VALUES (?,?,?,?,?,?,?,?,?,?,?)''', insert)
         con.commit()
 
-    def daily_events(self, force=False):
+    def daily_events(self):
         """
         Perform once per day events.
         """
-        # Bypass daily events unless forced to run them or it's actually a
-        # new day.
-        if not force and self.daily_trigger >= timing.today():
-            return None
-        if force:
-            log.info("Forced run of daily housekeeping actions.")
-        else:
-            log.info("Running routine daily housekeeping actions.")
+        log.info("Running Keyserver daily housekeeping actions.")
         n = libkeys.unadvertise(self.conn)
         if n > 0:
             log.info("Stopped advertising %s secret keys", n)
