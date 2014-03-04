@@ -167,10 +167,7 @@ def keyring_update(args):
 
     if args.fetchurl:
         if args.walk:
-            try:
-                libkeys.walk(conn, args.fetchurl)
-            except libkeys.KeyImportError, e:
-                sys.stderr.write("%s\n" % e)
+            remailer_conf_walk(conn, args.fetchurl)
         else:
             remailer_conf(conn, args.fetchurl)
 
@@ -242,7 +239,7 @@ def remailer_conf(conn, url):
         sys.stderr.write("Remailer-Conf retrieval failed for %s with "
                          "error: %s\n" % (url, e))
         sys.exit(1)
-    sys.stdout.write("Retrieved: %s\n" % url)
+    sys.stdout.write("Retrieved: %s (AKA %s).\n" % (url, conf_keys['name']))
     count = libkeys.count_addresses(conn, url)
     if count > 1:
         # If there is more than one record with the given address,
@@ -264,6 +261,24 @@ def remailer_conf(conn, url):
         sys.stdout.write("Refreshing existing Directory entry for Remailer "
                          "\"%s\"\n" % conf_keys['name'])
         libkeys.update_remailer_conf(conn, conf_keys)
+    return conf_keys
+
+
+def remailer_conf_walk(conn, url):
+    conf_keys = remailer_conf(conn, url)
+    if 'known' in conf_keys:
+        num_known = len(conf_keys['known'])
+        if num_known > 0:
+            for u in conf_keys['known']:
+                remailer_conf(conn, u)
+        else:
+            sys.stderr.write("%s: No other remailers known\n" % conf_keys['name'])
+            sys.exit(1)
+    else:
+        sys.stderr.write("%s: Has no Known Remailers section in its config."
+                         % conf_keys['name'])
+        sys.exit(1)
+
 
 
 parser = argparse.ArgumentParser(description='Mimix Client')

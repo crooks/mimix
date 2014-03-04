@@ -175,6 +175,8 @@ def fetch_remailer_conf(url):
     # The first section of the remailer-conf should be colon-spaced key/value
     # pairs.
     for line in sections[0].split("\n"):
+        if not ": " in line:
+            continue
         key, val = line.split(": ", 1)
         if key == "Valid From":
             key = "validfr"
@@ -206,7 +208,11 @@ def fetch_remailer_conf(url):
     # Third section is a list of other known remailers.  This section is
     # considered optional.
     if num_sections >= 3:
-        known_remailers = sections[2].split("\n")
+        known_remailers = sections[2].strip().split("\n")
+        # Check that this remailer isn't listed in its own known remailers
+        # section.
+        if 'address' in keys and keys['address'] in known_remailers:
+            known_remailers.remove(keys['address'])
         if known_remailers.pop(0).startswith("Known remailers"):
             keys['known'] = known_remailers
     return keys
@@ -233,6 +239,7 @@ def insert_remailer_conf(conn, keys):
                       VALUES (?,?,?,?,?,?,?,?,?,?)""", values)
     conn.commit()
 
+
 def update_remailer_conf(conn, keys):
     cursor = conn.cursor()
     values = (keys['name'],
@@ -253,49 +260,6 @@ def update_remailer_conf(conn, keys):
                       WHERE address = ?""", values)
     conn.commit()
 
-
-def walk(conn, address):
-    """
-    Start with a single remailer-conf page and fetch the details of its
-    local remailer.  This includes a list of other remailers known to that
-    remailer.  Each of these is fetched, along with its list of known
-    remailers.  Keep going until we no longer discover any new remailers.
-    """
-    cursor = conn.cursor()
-    all_remailers = {name: False for name in conf_fetch(conn, address)}
-    sys.stdout.write("%s: Knew about %s remailers.\n"
-                     % (address, len(all_remailers)))
-    # This loop will continue until a remailer-conf is fetched that
-    # contains no remailers we don't already know about.
-    while True:
-        updated = False
-        for ar in all_remailers.keys():
-            if all_remailers[ar]:
-                continue
-            # Regardless of success, we set this remailer as processed,
-            # otherwise we might infinite loop if it's unavailable.
-            all_remailers[ar] = True
-            try:
-                remailers = conf_fetch(conn, ar)
-            except KeyImportError:
-                # During this phase, unavailable remailers can safely
-                # be ignored.
-                continue
-            for r in remailers:
-                if r in all_remailers:
-                    continue
-                # A new remailer is discovered.  This dictates another
-                # iteration of all remailers.
-                sys.stdout.write("%s reports unknown remailer at %s\n"
-                                 % (ar, r))
-                updated = True
-                all_remailers[r] = False
-        if not updated:
-            # During the last iteration of all_remailers, no new nodes
-            # were discovered.
-            break
-    sys.stdout.write("Walk complete. %s remailers found.\n"
-                     % len(all_remailers))
 
 
 def contenders(conn, uptime=None, maxlat=None, minlat=None, smtp=False):
