@@ -226,25 +226,50 @@ class Server(object):
             f.write("%s\n" % row)
         f.close()
 
-    def middle_spy(self, address):
+    def middle_spy(self, address, force_fetch=False):
         """
         An active remailer sees the addresses of next-hop remailers.  This
         function checks if each address is known to this remailer.  If not,
         steps are taken to find out about it.
         """
         # If the address is unknown, steps are taken to find out about it.
-        if address in self.known_addresses:
+        if address in self.known_addresses and not force_fetch:
             return 0
         # Has there already been an attempt to retreive this address
         # today?
         if address in self.fetch_cache:
             log.info("Not trying to fetch remailer-conf for %s.  Already "
                      "attempted today", address)
-        else:
-            self.fetch_cache.append(address)
-            log.debug("Middle spy attempting to fetch: %s", address)
-            libkeys.conf_fetch(address)
-            self.known_addresses.append(address)
+            return 0
+        # If we get to this point, an attempt to retrieve the remailer-conf
+        # will be performed.
+        self.fetch_cache.append(address)
+        log.info("Middle spy attempting to fetch: %s", address)
+        try:
+            conf_keys = libkeys.fetch_remailer_conf(address)
+        except libkeys.KeyImportError, e:
+            log.info("Remailer-Conf retrieval failed for %s with error: %s",
+                     address, e)
+            return 0
+        # Check how many records we currently have in the DB for this
+        # address.  In theory it should never be more than one but
+        # this is a good opportunity to make absolutely sure.
+        count = libkeys.count_addresses(self.conn, conf_keys['address'])
+        if count > 1:
+            # If there is more than one record with the given address,
+            # ambiguity wins.  We don't know which is correct so it's safest to
+            # assume none and start with the supplied remailer-conf keys.
+            self.delete_address(keys['address'])
+            count = 0
+        if count == 0:
+            log.info("Inserting Remailer \"%s\" into our Directory.",
+                     conf_keys['name'])
+            libkeys.insert_remailer_conf(self.conn, conf_keys)
+        elif count == 1:
+            log.info("Refreshing Directory entry for Remailer \"%s\"",
+                     conf_keys['name'])
+            libkeys.update_remailer_conf(self.conn, conf_keys)
+        self.known_addresses.append(address)
 
 
 class Pinger(object):
@@ -278,3 +303,4 @@ if (__name__ == "__main__"):
                           config.get('database', 'directory'))
     with sqlite3.connect(dbkeys) as conn:
         s = Server(conn)
+        s.middle_spy("http://www.mixmin.net:8080", force_fetch=True)

@@ -146,125 +146,103 @@ def all_remailers_by_address(conn, smtp=False):
     return [e[0] for e in data]
 
 
-def conf_fetch(conn, address):
-    cursor = conn.cursor()
-    r = requests.get("%s/remailer-conf.txt" % address)
+def fetch_remailer_conf(url):
+    """
+    fetch_remailer_conf takes a Remailer base-url and returns the elements of
+    its associated remailer-conf as a dictionary.  Some validation of
+    elements is performed and a KeyImportError raised if any validation test
+    fails.
+    """
+    r = requests.get("%s/remailer-conf.txt" % url)
     if r.text is None:
-        raise KeyImportError("Could not retreive remailer-conf for %s"
-                             % address)
-    keys = {}
-    # Known Remailer List.  When processing reaches "Known remailers", the
-    # subsequent lines should be known remailer addresses.
-    krl = False
-    known_remailers = []
-    for line in r.text.split("\n"):
-        if not line:
-            continue
-        if not krl and ": " in line:
-            key, val = line.split(": ", 1)
-            if key == "Valid From":
-                key = "validfr"
-                try:
-                    val = timing.dateobj(val)
-                except ValueError:
-                    raise KeyImportError("Invalid date format")
-            elif key == "Valid To":
-                key = "validto"
-                try:
-                    val = timing.dateobj(val)
-                except ValueError:
-                    raise KeyImportError("Invalid date format")
-            keys[key.lower()] = val
-        elif krl and line not in known_remailers:
-            known_remailers.append(line)
-        if line == 'Known remailers:-':
-            krl = True
-    b = r.text.rfind("-----BEGIN PUBLIC KEY-----")
-    e = r.text.rfind("-----END PUBLIC KEY-----")
-    if b >= 0 and e >= 0:
-        keys['pubkey'] = r.text[b:e + 24]
+        raise KeyImportError("Could not fetch URL")
+    sections = r.text.split("\n\n")
+    num_sections = len(sections)
+    if num_sections < 2 or num_sections > 3:
+        raise KeyImportError("Malformed remailer-conf")
+    # keys will eventually be a dictionary of all remailer-conf elements but,
+    # for now, it's initialized with just the SMTP default.
+    keys = {'smtp': False}
+    # The first section of the remailer-conf should be colon-spaced key/value
+    # pairs.
+    for line in sections[0].split("\n"):
+        key, val = line.split(": ", 1)
+        if key == "Valid From":
+            key = "validfr"
+            try:
+                val = timing.dateobj(val)
+            except ValueError:
+                raise KeyImportError("Invalid date format")
+            if val > timing.today():
+                raise KeyImportError("Key is not valid yet")
+        elif key == "Valid To":
+            key = "validto"
+            try:
+                val = timing.dateobj(val)
+            except ValueError:
+                raise KeyImportError("Invalid date format")
+            if val < timing.today():
+                raise KeyImportError("Key has already expired")
+        elif key == 'SMTP':
+            val = textbool(val)
+        keys[key.lower()] = val
+    # Second section is the Public Key
+    if (sections[1].startswith("-----BEGIN PUBLIC KEY-----") and
+            sections[1].endswith("-----END PUBLIC KEY-----")):
+        keys['pubkey'] = sections[1]
     else:
-        # Can't import a remailer without a pubkey
-        raise KeyImportError("Public key not found")
-    try:
-        test = RSA.importKey(keys['pubkey'])
-    except ValueError:
-        raise KeyImportError("Public key is not valid")
-
-    # Date validation section
-    if not 'validfr' in keys or not 'validto' in keys:
-        raise KeyImportError("Validity period not defined")
-    if keys['validfr'] > timing.today():
-        raise KeyImportError("Key is not yet valid")
-    if keys['validto'] < timing.today():
-        raise KeyImportError("Key has expired")
-    # The KeyID should always be the MD5 hash of the Pubkey.
-    if 'keyid' not in keys:
-        raise KeyImportError("KeyID not published")
+        raise KeyImportError("Public Key not found")
     if keys['keyid'] != hashlib.md5(keys['pubkey']).hexdigest():
         raise KeyImportError("Key digest error")
+    # Third section is a list of other known remailers.  This section is
+    # considered optional.
+    if num_sections >= 3:
+        known_remailers = sections[2].split("\n")
+        if known_remailers.pop(0).startswith("Known remailers"):
+            keys['known'] = known_remailers
+    return keys
 
-    # Test we have all the key components required to perform
-    # the forthcoming DB updates.
-    required_keys = ['name', 'address', 'keyid', 'validfr', 'validto',
-                     'smtp', 'pubkey']
-    while required_keys:
-        key = required_keys.pop()
-        if key not in keys:
-            raise KeyImportError("%s: Not found" % key)
-
-    # All checks on the received remailer details are now complete.  From
-    # here we're concerned with updating our DB with those details.  The
-    # address is used as the key field for inserts/updates as it defines
-    # the uniqueness of the remailer to the client.
-    while True:
-        count = count_addresses(conn, keys['address'])
-        if count <= 1:
-            break
-        # If there is more than one record with the given address,
-        # ambiguity wins.  We don't know which is correct so it's safest to
-        # assume neither and start from scratch.
-        self.delete_address(keys['address'])
-    if count == 0:
-        # If no record exists for this address, we need to perform an
-        # insert operation.  This includes latency and uptime stats where
-        # we're forced to make the assumption that this is a fast, reliable
-        # remailer.
-        values = (keys['name'],
-                  keys['address'],
-                  keys['keyid'],
-                  keys['validfr'],
-                  keys['validto'],
-                  self.textbool(keys['smtp']),
-                  keys['pubkey'],
-                  1,
-                  100,
-                  0)
-        cursor.execute("""INSERT INTO keyring (name, address, keyid, validfr,
-                                               validto, smtp, pubkey,
-                                               advertise, uptime, latency)
-                          VALUES (?,?,?,?,?,?,?,?,?,?)""", values)
-    elif count == 1:
-        values = (keys['name'],
-                  keys['keyid'],
-                  keys['validfr'],
-                  keys['validto'],
-                  textbool(keys['smtp']),
-                  keys['pubkey'],
-                  1,
-                  keys['address'])
-        cursor.execute("""UPDATE keyring SET name = ?,
-                                             keyid = ?,
-                                             validfr = ?,
-                                             validto = ?,
-                                             smtp = ?,
-                                             pubkey = ?,
-                                             advertise = ?
-                          WHERE address = ?""", values)
-    else:
-        raise AssertionError("More than one record for supplied address")
+def insert_remailer_conf(conn, keys):
+    cursor = conn.cursor()
+    # If no record exists for this address, we need to perform an
+    # insert operation.  This includes latency and uptime stats where
+    # we're forced to make the assumption that this is a fast, reliable
+    # remailer.
+    values = (keys['name'],
+              keys['address'],
+              keys['keyid'],
+              keys['validfr'],
+              keys['validto'],
+              keys['smtp'],
+              keys['pubkey'],
+              1,
+              100,
+              0)
+    cursor.execute("""INSERT INTO keyring (name, address, keyid, validfr,
+                                           validto, smtp, pubkey,
+                                           advertise, uptime, latency)
+                      VALUES (?,?,?,?,?,?,?,?,?,?)""", values)
     conn.commit()
-    return known_remailers
+
+def update_remailer_conf(conn, keys):
+    cursor = conn.cursor()
+    values = (keys['name'],
+              keys['keyid'],
+              keys['validfr'],
+              keys['validto'],
+              keys['smtp'],
+              keys['pubkey'],
+              1,
+              keys['address'])
+    cursor.execute("""UPDATE keyring SET name = ?,
+                                         keyid = ?,
+                                         validfr = ?,
+                                         validto = ?,
+                                         smtp = ?,
+                                         pubkey = ?,
+                                         advertise = ?
+                      WHERE address = ?""", values)
+    conn.commit()
 
 
 def walk(conn, address):
@@ -389,5 +367,9 @@ class Client(object):
 
 
 if (__name__ == "__main__"):
-    all_remailers_by_address = withconn(all_remailers_by_address)
-    print all_remailers_by_address(smtp=True)
+    print fetch_remailer_conf("http://www.mixmin.net:8080")
+    sys.exit(0)
+    dbkeys = os.path.join(config.get('database', 'path'),
+                          config.get('database', 'directory'))
+    with sqlite3.connect(dbkeys) as conn:
+        pass
