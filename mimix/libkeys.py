@@ -146,6 +146,15 @@ def all_remailers_by_address(conn, smtp=False):
     return [e[0] for e in data]
 
 
+def delete_by_address(conn, address):
+    cursor = conn.cursor()
+    criteria = (address,)
+    cursor.execute("""DELETE FROM keyring
+                      WHERE address = ? AND seckey IS NULL""", criteria)
+    conn.commit()
+    return cursor.rowcount
+
+
 def fetch_remailer_conf(url):
     """
     fetch_remailer_conf takes a Remailer base-url and returns the elements of

@@ -172,10 +172,7 @@ def keyring_update(args):
             except libkeys.KeyImportError, e:
                 sys.stderr.write("%s\n" % e)
         else:
-            try:
-                libkeys.conf_fetch(conn, args.fetchurl)
-            except libkeys.KeyImportError, e:
-                sys.stderr.write("%s\n" % e)
+            remailer_conf(conn, args.fetchurl)
 
     if args.expire:
         n = libkeys.delete_expired(conn)
@@ -201,22 +198,20 @@ def remailer_info(args):
 
 
 def remailer_delete(args):
-    with sqlite3.connect(dbkeys()) as con:
-        cur = con.cursor()
+    with sqlite3.connect(dbkeys()) as conn:
+        cursor = conn.cursor()
         if args.keyid:
             criteria = (args.keyid,)
-            cur.execute("DELETE FROM keyring WHERE keyid = ?", criteria)
-            con.commit()
+            cursor.execute("DELETE FROM keyring WHERE keyid = ?", criteria)
+            conn.commit()
             sys.stdout.write("Deleted %s entries\n" % cur.rowcount)
         elif args.address:
-            criteria = (args.address,)
-            cur.execute("DELETE FROM keyring WHERE address = ?", criteria)
-            con.commit()
-            sys.stdout.write("Deleted %s entries\n" % cur.rowcount)
+            n = libkeys.delete_by_address(conn, args.address)
+            sys.stdout.write("Deleted %s entries\n" % n)
         elif args.name:
             criteria = (args.name,)
-            cur.execute("DELETE FROM keyring WHERE name = ?", criteria)
-            con.commit()
+            cursor.execute("DELETE FROM keyring WHERE name = ?", criteria)
+            conn.commit()
             sys.stdout.write("Deleted %s entries\n" % cur.rowcount)
 
 
@@ -238,6 +233,38 @@ def dbkeys():
     """
     return os.path.join(config.get('database', 'path'),
            config.get('database', 'directory'))
+
+
+def remailer_conf(conn, url):
+    try:
+        conf_keys = libkeys.fetch_remailer_conf(url)
+    except libkeys.KeyImportError, e:
+        sys.stderr.write("Remailer-Conf retrieval failed for %s with "
+                         "error: %s\n" % (url, e))
+        sys.exit(1)
+    sys.stdout.write("Retrieved: %s\n" % url)
+    count = libkeys.count_addresses(conn, url)
+    if count > 1:
+        # If there is more than one record with the given address,
+        # ambiguity wins.  We don't know which is correct so it's safest to
+        # assume none and start with the supplied remailer-conf keys.
+        sys.stderr.write("Oops! We have more than one key already on "
+                         "file for %s.  Deleting them and using the "
+                         "newly retrieved copy.\n" % url)
+        n = libkeys.delete_by_address(conn, url)
+        sys.stdout.write("Deleted %s records for %s\n" % (n, url))
+        count = 0
+    # At this point, count can only be 0 or 1.
+    assert count == 0 or count == 1
+    if count == 0:
+        sys.stdout.write("Inserting new Remailer \"%s\" into our Directory.\n"
+                         % conf_keys['name'])
+        libkeys.insert_remailer_conf(conn, conf_keys)
+    elif count == 1:
+        sys.stdout.write("Refreshing existing Directory entry for Remailer "
+                         "\"%s\"\n" % conf_keys['name'])
+        libkeys.update_remailer_conf(conn, conf_keys)
+
 
 parser = argparse.ArgumentParser(description='Mimix Client')
 cmds = parser.add_subparsers(help='Commands')
