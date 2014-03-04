@@ -162,8 +162,7 @@ class Server(object):
         else:
             mykey = (keyinfo[0], RSA.importKey(keyinfo[1]))
             log.info("Advertising current KeyID: %s", mykey[0])
-        self.mykey = mykey
-        self.advertise()
+        self.advertise(mykey)
         # Secret keys are cached when running as a remailer.  This is because
         # the key is required to decrypt every received message.  Clearing the
         # cache at this point ensures it doesn't become stale with expired
@@ -183,7 +182,8 @@ class Server(object):
 
     def get_secret(self, keyid):
         """ Return the Secret Key object associated with the keyid provided.
-            If no key is found, return None.
+            If no key is found, return None.  This function also maintains
+            the Secret Key Cache.
         """
         if keyid in self.sec_cache:
             log.debug("Seckey cache hit for %s", keyid)
@@ -197,9 +197,11 @@ class Server(object):
         log.info("%s: Got Secret Key from DB", keyid)
         return self.sec_cache[keyid]
 
-    def advertise(self):
+    def advertise(self, mykey):
+        # mykey is a tuple of (Keyid, BinarySecretKey)
+        criteria = (mykey[0],)
         self.exe("""SELECT name,address,validfr,validto,smtp, pubkey
-                 FROM keyring WHERE keyid=?""", (self.mykey[0],))
+                 FROM keyring WHERE keyid=?""", criteria)
         name, address, fr, to, smtp, pub = self.cursor.fetchone()
         filename = os.path.join(config.get('http', 'wwwdir'),
                                 'remailer-conf.txt')
@@ -207,12 +209,11 @@ class Server(object):
         f = open(filename, 'w')
         f.write("Name: %s\n" % name)
         f.write("Address: %s\n" % address)
-        f.write("KeyID: %s\n" % self.mykey[0])
+        f.write("KeyID: %s\n" % mykey[0])
         f.write("Valid From: %s\n" % fr)
         f.write("Valid To: %s\n" % to)
         f.write("SMTP: %s\n" % smtptxt)
         f.write("\n%s\n\n" % pub)
-        criteria = (self.mykey[0],)
         # Only the addresses of known remailers are advertised. It's up to the
         # third party to gather further details directly from the source.  The
         # query only grabs distinct addresses as we only expect to find a
@@ -239,11 +240,11 @@ class Server(object):
         if address in self.fetch_cache:
             log.info("Not trying to fetch remailer-conf for %s.  Already "
                      "attempted today", address)
-            raise KeyImportError("URL retrieval already attempted today")
-        self.fetch_cache.append(address)
-        log.debug("Middle spy attempting to fetch: %s", address)
-        self.conf_fetch(address)
-        self.known_addresses.append(address)
+        else:
+            self.fetch_cache.append(address)
+            log.debug("Middle spy attempting to fetch: %s", address)
+            libkeys.conf_fetch(address)
+            self.known_addresses.append(address)
 
 
 class Pinger(object):
@@ -276,10 +277,4 @@ if (__name__ == "__main__"):
     dbkeys = os.path.join(config.get('database', 'path'),
                           config.get('database', 'directory'))
     with sqlite3.connect(dbkeys) as conn:
-        #c = Chain(conn)
-        #chain = "*,fleegle,*"
-        #c.create(chainstr=chain)
-        #print c.chainstr
-        #print c.exitstr
         s = Server(conn)
-
