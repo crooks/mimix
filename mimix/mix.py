@@ -352,7 +352,8 @@ class Decode():
                 log.warn("Anti-tag digest failure.  This message might have "
                          "been tampered with.")
                 raise PacketError("Anti-tag digest mismatch")
-            self.keystore.middle_spy(inner.packet_info.next_hop)
+            if config.getboolean('general', 'hopspy'):
+                self.keystore.middle_spy(inner.packet_info.next_hop)
             for h in range(9):
                 cipher = AES.new(inner.aes, AES.MODE_CFB,
                                  inner.packet_info.ivs[h])
