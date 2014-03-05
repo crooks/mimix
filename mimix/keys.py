@@ -172,7 +172,10 @@ class Server(object):
         # time this remailer functions as an Intermediate Hop.  The message
         # contains the address of the next_hop and this list confirms that
         # address is a known remailer.
-        self.known_addresses = libkeys.all_remailers_by_address(self.conn)
+        #self.known_addresses = libkeys.all_remailers_by_address(self.conn)
+        # Setting known_addresses to an empty list forces the remailer to
+        # attempt retreival of each remailer it encounters.
+        self.known_addresses = []
         # Reset the fetch cache.  This cache prevents repeated http GET
         # requests being sent to dead or never there remailers.
         self.fetch_cache = []
@@ -248,7 +251,7 @@ class Server(object):
         try:
             conf_keys = libkeys.fetch_remailer_conf(address)
         except libkeys.KeyImportError, e:
-            log.info("Remailer-Conf retrieval failed for %s with error: %s",
+            log.warn("Remailer-Conf retrieval failed for %s with error: %s",
                      address, e)
             return 0
         # Check how many records we currently have in the DB for this

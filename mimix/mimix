@@ -123,7 +123,7 @@ def keyring_update(args):
         conn.text_factory = str
         if 'keyring' not in libkeys.list_tables(conn):
             libkeys.create_keyring(conn)
-            sys.stdout.write("Created \"keyring\" table in %s" % dbkeys())
+            sys.stdout.write("Created \"keyring\" table in %s\n" % dbkeys())
         cursor = conn.cursor()
         exe = cursor.execute
         if args.setexit:
