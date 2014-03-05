@@ -34,6 +34,7 @@ from Crypto.PublicKey import RSA
 class KeyImportError(Exception):
     pass
 
+
 def withconn(fn):
     def fn_wrap(*args, **kwargs):
         dbkeys = os.path.join(config.get('database', 'path'),
@@ -53,6 +54,7 @@ def list_tables(conn):
         return []
     else:
         return [e[0] for e in data]
+
 
 def create_keyring(conn):
     """
@@ -217,6 +219,7 @@ def fetch_remailer_conf(url):
             keys['known'] = known_remailers
     return keys
 
+
 def insert_remailer_conf(conn, keys):
     cursor = conn.cursor()
     # If no record exists for this address, we need to perform an
@@ -259,7 +262,6 @@ def update_remailer_conf(conn, keys):
                                          advertise = ?
                       WHERE address = ?""", values)
     conn.commit()
-
 
 
 def contenders(conn, uptime=None, maxlat=None, minlat=None, smtp=False):
@@ -321,22 +323,6 @@ def textbool(text):
         return True
     else:
         return False
-
-
-class Client(object):
-    def __init__(self):
-        exe("SELECT name FROM sqlite_master WHERE type='table'")
-        data = cur.fetchall()
-        if data is None:
-            tables = []
-        else:
-            tables = [e[0] for e in data]
-        self.tables = tables
-        if 'keyring' not in tables:
-            self.create_keyring()
-        else:
-            delete_expired(con)
-        con.commit()
 
 
 if (__name__ == "__main__"):
