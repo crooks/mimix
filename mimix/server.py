@@ -61,7 +61,7 @@ class Server(Daemon):
             handler = logging.FileHandler(filename, mode='a')
         handler.setFormatter(logging.Formatter(fmt=logfmt, datefmt=datefmt))
         log.addHandler(handler)
-        event = EventTimer("Event")
+        event = EventTimer()
         # The inbound pool always processes every message.
         in_pool = Pool.Pool(name='inpool',
                             pooldir=config.get('pool', 'indir'))
@@ -251,9 +251,7 @@ class Server(Daemon):
 
 
 class EventTimer(object):
-    def __init__(self, name):
-        self.log = logging.getLogger("mimix.%s" % name)
-        self.log.info("Initializing Event Handler called \"%s\".", name)
+    def __init__(self):
         self.daily_stamp = timing.today()
 
     def daily_trigger(self):
