@@ -121,6 +121,9 @@ def send_msg(args):
 def keyring_update(args):
     with sqlite3.connect(dbkeys()) as conn:
         conn.text_factory = str
+        if 'keyring' not in libkeys.list_tables(conn):
+            libkeys.create_keyring(conn)
+            sys.stdout.write("Created \"keyring\" table in %s" % dbkeys())
         cursor = conn.cursor()
         exe = cursor.execute
         if args.setexit:
@@ -174,6 +177,7 @@ def keyring_update(args):
     if args.expire:
         n = libkeys.delete_expired(conn)
         sys.stdout.write("Expired %s remailers\n" % n)
+
 
 def remailer_info(args):
     with sqlite3.connect(dbkeys()) as con:
@@ -305,8 +309,8 @@ update.set_defaults(func=keyring_update)
 update.add_argument('--fetch', type=str, dest='fetchurl',
                     help="Fetch a remailer-conf from the specified address")
 update.add_argument('--walk', dest='walk', action='store_true',
-                    help="Follow known_remailer trail to fetch all known "
-                         "remailers")
+                    help=("Follow known_remailer trail to fetch all known "
+                          "remailers"))
 update.add_argument('--expire', dest='expire', action='store_true',
                     help="Delete keys/stats for remailers that have expired")
 update.add_argument('--name', type=str, dest='name',
