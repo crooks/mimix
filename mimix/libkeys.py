@@ -148,6 +148,15 @@ def all_remailers_by_address(conn, smtp=False):
     return [e[0] for e in data]
 
 
+def secret_by_name(conn, name):
+    cursor = conn.cursor()
+    criteria = (name,)
+    cursor.execute("""SELECT seckey FROM keyring
+                   WHERE name=? AND seckey IS NOT NULL AND advertise""",
+                   criteria)
+    return cursor.fetchone()
+
+
 def delete_by_address(conn, address):
     cursor = conn.cursor()
     criteria = (address,)

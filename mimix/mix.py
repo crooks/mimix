@@ -85,8 +85,8 @@ class ExitEncode(object):
     [ Message ID                  16 bytes ]
     [ Initialization vector       16 bytes ]
     [ Exit type                    1 byte  ]
-    [ Payload length               2 bytes ]
-    [ Payload digest              32 bytes ]
+    [ Payload (chunk) length       2 bytes ]
+    [ Payload (chunk) digest      32 bytes ]
     [ Padding                    187 bytes ]
     """
     def __init__(self):

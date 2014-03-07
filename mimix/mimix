@@ -180,22 +180,31 @@ def keyring_update(args):
 
 
 def remailer_info(args):
-    with sqlite3.connect(dbkeys()) as con:
-        cur = con.cursor()
+    with sqlite3.connect(dbkeys()) as conn:
+        cursor = conn.cursor()
         criteria = (args.exitonly,)
         if args.listkeys:
-            cur.execute("""SELECT name,address,keyid FROM keyring
+            cursor.execute("""SELECT name,address,keyid FROM keyring
                            WHERE advertise AND (smtp OR smtp=?)""", criteria)
-            for row in cur.fetchall():
+            for row in cursor.fetchall():
                 sys.stdout.write('%-14s %-30s %32s\n' % row)
         elif args.liststats:
-            cur.execute("""SELECT name,address,uptime,
+            cursor.execute("""SELECT name,address,uptime,
                            latency / 60,latency % 60 FROM keyring
                            WHERE advertise AND (smtp OR smtp=?) AND
                            uptime IS NOT NULL and latency IS NOT NULL
                            ORDER BY uptime""", criteria)
-            for row in cur.fetchall():
+            for row in cursor.fetchall():
                 sys.stdout.write('%-14s %-30s %s%% %s:%02d\n' % row)
+
+        elif args.secret:
+            if args.name:
+                sk = libkeys.secret_by_name(conn, args.name)
+                if sk:
+                    sys.stdout.write(sk[0] + "\n")
+                else:
+                    sys.stderr.write("No secret key found for %s\n"
+                                     % args.name)
 
 
 def remailer_delete(args):
@@ -331,8 +340,12 @@ infogroup.add_argument('--keys', dest='listkeys', action='store_true',
                        help="List all known remailers and their keyids")
 infogroup.add_argument('--stats', dest='liststats', action='store_true',
                        help="List all known remailers and their stats")
+infogroup.add_argument('--secret', dest='secret', action='store_true',
+                       help="Write a remailer's Secret Key to STDOUT")
 info.add_argument('--exit', dest='exitonly', action='store_true',
                   help="List only exit remailers")
+info.add_argument('--name', type=str, dest='name',
+                  help="Pass a Remailer's name as an option")
 
 delete = cmds.add_parser('delete', help="Delete remailers")
 delete.set_defaults(func=remailer_delete)

@@ -34,7 +34,6 @@ class Pool():
     def __init__(self, name, pooldir, interval='1m', rate=100, size=1,
                  expire=7):
         self.trigger_time = timing.future(mins=1)
-        self.trigger_hour = timing.future(hours=1)
         assert type(interval) == StringType
         assert type(rate) == IntType
         assert type(size) == IntType
@@ -44,6 +43,7 @@ class Pool():
         self.rate = rate
         self.size = size
         self.expire = expire
+        self.processed = 0
         self.log = logging.getLogger("mimix.%s" % name)
 
     def filename(self):
@@ -71,19 +71,9 @@ class Pool():
         """Pick a random subset of filenames in the Pool and return them as a
         list.  If the Pool isn't sufficiently large, return an empty list.
         """
-        # Set a flag to indicate an hour has passed.
-        if self.trigger_hour < timing.now():
-            hourly = True
-            self.trigger_hour = timing.future(hours=1)
-        else:
-            hourly = False
-
         files = os.listdir(self.pooldir)
         numfiles = len(files)
-        if hourly:
-            self.log.info("Pool contains %s messages", numfiles)
-        else:
-            self.log.debug("Pool contains %s messages", numfiles)
+        self.log.debug("Pool contains %s messages", numfiles)
 
         if numfiles < self.size:
             # The pool is too small to send messages.
@@ -111,6 +101,7 @@ class Pool():
         end = start + process_num
         for f in files[start:end]:
             yield os.path.join(self.pooldir, f)
+        self.processed += process_num
         # Set the point in the future at which another outbound pool run will
         # occur.
         self.trigger_time = timing.dhms_future(self.interval)
@@ -134,6 +125,13 @@ class Pool():
             self.log.debug("Processing %s messages.", numfiles)
         for f in files:
             yield os.path.join(self.pooldir, f)
+        self.processed += numfiles
+
+    def report_processed(self, reset = False):
+        num = self.processed
+        if reset:
+            self.processed = 0
+        return num
 
 
 log = logging.getLogger("mimix.%s" % __name__)

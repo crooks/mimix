@@ -121,7 +121,7 @@ class Chunker(object):
             log.debug("%s: Insufficient chunks available.", msgid)
             return False
         elif all_numchunks[0] < len(all_numchunks):
-            log.warn("%s: Chunks all agree of numchunks(%s) but there are "
+            log.warn("%s: Chunks all agree on numchunks(%s) but there are "
                      "%s chunks with this Message-ID.  Might be a client-"
                      "side bug.", msgid, all_numchunks[0],len(all_numchunks))
             return False

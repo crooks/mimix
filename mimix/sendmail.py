@@ -28,34 +28,22 @@ from email.parser import Parser
 from email.mime.text import MIMEText
 
 
-def send(exit_info):
-    msg = Parser().parsestr(exit_info.payload)
-    if msg['From'] and msg['To']:
-        s = smtplib.SMTP('localhost')
-        log.debug("Delivering message to: %s", msg['To'])
-        try:
-            s.sendmail(msg['From'], msg['To'], msg.as_string())
-        except smtplib.SMTPRecipientsRefused, e:
-            log.info("Email error: %s", e)
-    else:
-        if not 'From' in msg:
-            log.info("Message has no From header")
-        if not 'To' in msg:
-            log.info("Message has no To header")
-
 def sendmsg(msg):
     if msg['From'] and msg['To']:
         s = smtplib.SMTP('localhost')
         log.debug("Delivering message to: %s", msg['To'])
         try:
             s.sendmail(msg['From'], msg['To'], msg.as_string())
+            return True
         except smtplib.SMTPRecipientsRefused, e:
             log.info("Email error: %s", e)
+            return False
     else:
         if not 'From' in msg:
             log.info("Message has no From header")
         if not 'To' in msg:
             log.info("Message has no To header")
+        return False
 
 log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):

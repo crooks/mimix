@@ -73,6 +73,12 @@ class Server(Daemon):
         Random.atfork()
         self.in_pool = in_pool
         self.out_pool = out_pool
+        # Here are some counters that give hourly.daily details on messages
+        # processed.
+        self.count_dummies = 0
+        self.count_email_success = 0
+        self.count_email_failed = 0
+
         dbkeys = os.path.join(config.get('database', 'path'),
                               config.get('database', 'directory'))
         with sqlite3.connect(dbkeys) as conn:
@@ -91,6 +97,25 @@ class Server(Daemon):
                     if expired > 0:
                         log.info("Expired %s chunks from the Chunk DB",
                                  expired)
+                if event.hourly_trigger():
+                    log.info("Stats: inbound=%s, outbound=%s, email_sent=%s,"
+                             "email_fail=%s, dummies=%s",
+                             in_pool.report_processed(),
+                             out_pool.report_processed(),
+                             self.count_email_success,
+                             self.count_email_failed,
+                             self.count_dummies)
+                if event.midnight_trigger():
+                    log.info("Day Stats: inbound=%s, outbound=%s, "
+                             "email_sent=%s, email_fail=%s, dummies=%s",
+                             in_pool.report_processed(reset=True),
+                             out_pool.report_processed(reset=True),
+                             self.count_email_success,
+                             self.count_email_failed,
+                             self.count_dummies)
+                    self.count_email_success = 0
+                    self.count_email_failed = 0
+                    self.count_dummies = 0
                 # Process outbound messages first.  This ensures that no
                 # message is received, processed and sent during the same
                 # iteration.  Not sure if doing so would be a bad thing for
@@ -146,13 +171,17 @@ class Server(Daemon):
                     if (m.packet_info.chunknum == 1 and
                             m.packet_info.numchunks == 1):
                         msg = Parser().parsestr(m.packet_info.payload)
-                        sendmail.sendmsg(msg)
+                        if sendmail.sendmsg(msg):
+                            count_email_success += 1
+                        else:
+                            count_email_failed += 1
                     else:
                         log.debug("Multipart message. Doing chunk processing.")
                         self.chunks.insert(m.packet_info)
                         self.chunks.assemble()
                 elif m.packet_info.exit_type == 1:
                     # It's a dummy
+                    self.count_dummies += 1
                     log.debug("Discarding dummy.")
                 else:
                     log.warn("Unknown Exit_Type, discarding.")
@@ -252,15 +281,29 @@ class Server(Daemon):
 
 class EventTimer(object):
     def __init__(self):
-        self.daily_stamp = timing.today()
+        self.hour_stamp = timing.future(hours=1)
+        self.day_stamp = timing.future(days=1)
+        self.midnight = timing.next_midnight()
 
     def daily_trigger(self):
-        if self.daily_stamp < timing.today():
+        if timing.now() > self.day_stamp:
             # Time to do things!
-            self.daily_stamp = timing.today()
+            self.day_stamp = timing.future(days=1)
             return True
         return False
 
+    def hourly_trigger(self):
+        if timing.now() > self.hour_stamp:
+            # Time to do things!
+            self.hour_stamp = timing.future(hours=1)
+            return True
+        return False
+
+    def midnight_trigger(self):
+        if timing.now() > self.midnight:
+            self.midnight = timing.next_midnight()
+            return True
+        return False
 
 if (__name__ == "__main__"):
     pidfile = os.path.join(config.get('general', 'piddir'),
