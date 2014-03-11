@@ -176,7 +176,8 @@ class Server(Daemon):
                     #TODO Need to do randhopping
                     self.in_pool.delete(filename)
                     continue
-                # Exit and SMTP type: Email it.
+                # Exit and SMTP type: Write it to the outbound_pool for
+                # subsequent delivery.
                 if (m.packet_info.chunknum == 1 and
                         m.packet_info.numchunks == 1):
                     with open(self.out_pool.filename(), 'w') as f:
@@ -194,6 +195,7 @@ class Server(Daemon):
             else:
                 # Not an exit, write it to the outbound pool.
                 self.out_pool.packet_write(m)
+                self.in_pool.delete(filename)
 
     def process_outbound(self):
         """

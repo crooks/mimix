@@ -202,7 +202,7 @@ class Server(object):
         return self.sec_cache[keyid]
 
     def get_smtp(self):
-        return self.do_smtp()
+        return self.do_smtp
 
     def advertise(self, mykey):
         # mykey is a tuple of (Keyid, BinarySecretKey)
