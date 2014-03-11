@@ -173,7 +173,7 @@ class Server(Daemon):
                     # to be rand-hopped.
                     log.debug("Message requires SMTP capable Remailer. "
                               "Rand-hopping it to an exit node.")
-                    #TODO Need to do randhopping
+                    self.randhop(m.packet_info)
                     self.in_pool.delete(filename)
                     continue
                 # Exit and SMTP type: Write it to the outbound_pool for
@@ -288,6 +288,17 @@ class Server(Daemon):
             m.encode(exit, chain.chain)
             self.out_pool.packet_write(m)
 
+    def randhop(self, packet_info):
+        chain = Chain.Chain(self.conn)
+        chain.create('*,*')
+        log.debug("Randhopping message with chain: %s", chain.chainstr)
+        exit = mix.ExitEncode()
+        exit.set_chunks(Random.new().read(16), 1, 1)
+        exit.set_exit_type(0)
+        exit.set_payload(packet_info.payload)
+        m = mix.Encode(self.conn)
+        m.encode(exit, chain.chain)
+        self.out_pool.packet_write(m)
 
 class EventTimer(object):
     def __init__(self):
