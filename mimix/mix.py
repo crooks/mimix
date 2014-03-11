@@ -313,11 +313,11 @@ class Decode():
         # in the Class kind of makes sense.
         self.keystore = keystore
 
-    def decode(self, packet):
-        assert len(packet) == 20480
+    def decode(self):
+        assert len(self.packet) == 20480
         self.is_exit = False
         # Split the header component into its 10 distinct headers.
-        headers = [packet[i:i+1024] for i in range(0, 10240, 1024)]
+        headers = [self.packet[i:i+1024] for i in range(0, 10240, 1024)]
         # The first header gets processed and removed at this hop.
         tophead = headers.pop(0)
         if hashlib.sha512(tophead[:960]).digest() != tophead[960:]:
@@ -347,7 +347,7 @@ class Decode():
             # against one calculated at this time.
             antitag = hashlib.sha256()
             antitag.update(headers[0])
-            antitag.update(packet[10240:])
+            antitag.update(self.packet[10240:])
             if antitag.digest() != inner.packet_info.antitag:
                 log.warn("Anti-tag digest failure.  This message might have "
                          "been tampered with.")
@@ -363,7 +363,7 @@ class Decode():
                              inner.packet_info.ivs[8])
             binary = (''.join(headers) +
                       Random.new().read(1024) +
-                      cipher.decrypt(packet[10240:20480]))
+                      cipher.decrypt(self.packet[10240:20480]))
             text = "-----BEGIN MIMIX MESSAGE-----\n"
             text += "Version: %s\n\n" % config.get('general', 'version')
             text += binary.encode('base64')
@@ -374,9 +374,42 @@ class Decode():
 
         elif inner.pkt_type == "1":
             cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
-            inner.packet_info.set_payload(cipher.decrypt(packet[10240:20480]))
+            inner.packet_info.set_payload(cipher.decrypt(self.packet[10240:20480]))
             self.is_exit = True
         self.packet_info = inner.packet_info
+
+    def set_packet(self, packet):
+        self.packet = packet
+
+    def file_to_packet(self, filename):
+        with open(filename, 'r') as f:
+            packet = ""
+            packet_pos = 0
+            for line in f:
+                if (packet_pos == 0 and
+                        line == '-----BEGIN MIMIX MESSAGE-----\n'):
+                    packet_pos = 1
+                    continue
+                if packet_pos == 1 and line.startswith('Version: '):
+                    version = line.split(': ')[1].strip()
+                    packet_pos = 2
+                if packet_pos == 2:
+                    if len(line) < 70:
+                       continue
+                    else:
+                        packet_pos = 3
+                if packet_pos == 3:
+                    if line.rstrip() == '-----END MIMIX MESSAGE-----':
+                        packet_pos = 4
+                        break
+                    else:
+                        packet += line
+            if packet_pos != 4:
+                raise PacketError("Invalid Mimix file:%s" % packet_pos)
+            self.packet = packet.decode('base64')
+            if len(self.packet) != 20480:
+                raise PacketError("Incorrect packet size")
+            self.version = version
 
     def packet_import(self, filename):
         """
@@ -427,6 +460,9 @@ if (__name__ == "__main__"):
     log.addHandler(handler)
     dbkeys = os.path.join(config.get('database', 'path'),
                           config.get('database', 'directory'))
-    import sqlite3
-    with sqlite3.connect(dbkeys) as conn:
-        mix = Encode(conn)
+    #import sqlite3
+    #with sqlite3.connect(dbkeys) as conn:
+    #    mix = Encode(conn)
+    filename = '/home/crooks/mimix/inbound_pool/ma4e43f0c'
+    decode = Decode(1)
+    decode.file_to_packet(filename)

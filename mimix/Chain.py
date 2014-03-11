@@ -44,7 +44,7 @@ class Chain(object):
             if len(contenders) == 0:
                 raise ChainError("No exit remailers meet selection criteria")
             exit = contenders[random.randint(0, len(exits) - 1)]
-        elif exit not in libkeys.all_remailers_by_name(self.conn, smtp=True):
+        elif exit not in libkeys.all_remailers_by_name(self.conn):
             log.error("%s: Invalid hardcoded exit remailer", exit)
             raise ChainError("Invalid exit node")
         chain = [exit]

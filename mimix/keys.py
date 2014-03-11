@@ -192,13 +192,17 @@ class Server(object):
             log.debug("Seckey cache hit for %s", keyid)
             return self.sec_cache[keyid]
         log.debug("Seckey cache miss for %s", keyid)
-        self.exe('SELECT seckey FROM keyring WHERE keyid=?', (keyid,))
+        self.exe('SELECT seckey,smtp FROM keyring WHERE keyid=?', (keyid,))
         data = self.cursor.fetchone()
         if data is None or data[0] is None:
             return None
         self.sec_cache[keyid] = RSA.importKey(data[0])
+        self.do_smtp = bool(data[1])
         log.info("%s: Got Secret Key from DB", keyid)
         return self.sec_cache[keyid]
+
+    def get_smtp(self):
+        return self.do_smtp()
 
     def advertise(self, mykey):
         # mykey is a tuple of (Keyid, BinarySecretKey)

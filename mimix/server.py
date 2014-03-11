@@ -89,8 +89,8 @@ class Server(Daemon):
             self.conn = conn
             # Loop until a SIGTERM or Ctrl-C is received.
             while True:
-                # Every loop, check if it's yet time to perform daily
-                # housekeeping actions.  This also clears the Secret Key cache.
+                # Every loop, check if it's time to perform hourly/daily
+                # housekeeping actions.
                 if event.daily_trigger():
                     keyserv.daily_events()
                     expired = chunks.expire()
@@ -98,7 +98,7 @@ class Server(Daemon):
                         log.info("Expired %s chunks from the Chunk DB",
                                  expired)
                 if event.hourly_trigger():
-                    log.info("Stats: inbound=%s, outbound=%s, email_sent=%s,"
+                    log.info("Stats: inbound=%s, outbound=%s, email_sent=%s, "
                              "email_fail=%s, dummies=%s",
                              in_pool.report_processed(),
                              out_pool.report_processed(),
@@ -140,9 +140,9 @@ class Server(Daemon):
         for filename in generator:
             m = mix.Decode(self.keyserv)
             try:
-                packet_data = m.packet_import(filename)
-            except ValueError, e:
-                # ValueError is returned when the packet being processed isn't
+                m.file_to_packet(filename)
+            except mix.PacketError, e:
+                # Error is returned when the packet being processed isn't
                 # compliant with the specification.  These messages are
                 # deleted without further consideration.
                 log.debug("Mimix packet read failed with: %s", e)
@@ -150,15 +150,17 @@ class Server(Daemon):
                 continue
             # Process the Base64 component of the message.
             try:
-                m.decode(packet_data['binary'])
+                m.decode()
             except mix.PacketError, e:
                 log.info("Decoding failed with: %s", e)
                 self.in_pool.delete(filename)
                 continue
-            if not m.is_exit:
-                # Not an exit, write it to the outbound pool.
-                self.out_pool.packet_write(m)
-            else:
+            if m.is_exit and m.packet_info.exit_type == 1:
+                # It's a dummy
+                self.count_dummies += 1
+                self.in_pool.delete(filename)
+                continue
+            if m.is_exit:
                 log.debug("Exit Message: File=%s, MessageID=%s, ChunkNum=%s,"
                           " NumChunks=%s, ExitType=%s",
                           os.path.basename(filename),
@@ -166,26 +168,32 @@ class Server(Daemon):
                           m.packet_info.chunknum,
                           m.packet_info.numchunks,
                           m.packet_info.exit_type)
-                if m.packet_info.exit_type == 0:
-                    # Exit and SMTP type: Email it.
-                    if (m.packet_info.chunknum == 1 and
-                            m.packet_info.numchunks == 1):
-                        msg = Parser().parsestr(m.packet_info.payload)
-                        if sendmail.sendmsg(msg):
-                            count_email_success += 1
-                        else:
-                            count_email_failed += 1
-                    else:
-                        log.debug("Multipart message. Doing chunk processing.")
-                        self.chunks.insert(m.packet_info)
-                        self.chunks.assemble()
-                elif m.packet_info.exit_type == 1:
-                    # It's a dummy
-                    self.count_dummies += 1
-                    log.debug("Discarding dummy.")
+                if not self.keyserv.get_smtp():
+                    # This Remailer doesn't support SMTP.  The message needs
+                    # to be rand-hopped.
+                    log.debug("Message requires SMTP capable Remailer. "
+                              "Rand-hopping it to an exit node.")
+                    #TODO Need to do randhopping
+                    self.in_pool.delete(filename)
+                    continue
+                # Exit and SMTP type: Email it.
+                if (m.packet_info.chunknum == 1 and
+                        m.packet_info.numchunks == 1):
+                    with open(self.out_pool.filename(), 'w') as f:
+                        f.write(m.packet_info.payload)
+                    self.in_pool.delete(filename)
+                    continue
                 else:
-                    log.warn("Unknown Exit_Type, discarding.")
-            self.in_pool.delete(filename)
+                    log.debug("Multipart message. Doing chunk processing.")
+                    self.chunks.insert(m.packet_info)
+                    msgid = m.packet_info.messageid.encode('hex')
+                    if self.chunks.chunk_check(msgid):
+                        self.chunks.assemble(msgid, self.out_pool.filename())
+                    self.in_pool.delete(filename)
+                    continue
+            else:
+                # Not an exit, write it to the outbound pool.
+                self.out_pool.packet_write(m)
 
     def process_outbound(self):
         """
@@ -199,22 +207,22 @@ class Server(Daemon):
         self.inject_dummy(config.getint('pool', 'outdummy'))
         for filename in generator:
             m = mix.Decode(self.keyserv)
+            with open(filename, 'r') as f:
+                msg = Parser().parse(f)
+            if 'To' in msg:
+                log.debug("Outbound message to %s", msg['To'])
+                if sendmail.sendmsg(msg):
+                    self.out_pool.delete(filename)
+                continue
+            if 'Next-Hop' in msg:
+                log.debug("Outbound message to Next Hop Remailer: %s",
+                          msg['Next-Hop'])
+            if not 'Expire' in msg:
+                log.error("Next-Hop message with no Expire header.")
+                self.out_pool.delete(filename)
+                continue
             try:
-                packet_data = m.packet_import(filename)
-            except ValueError, e:
-                log.debug("Mimix packet read failed with: %s", e)
-                self.out_pool.delete(filename)
-                continue
-            if not 'next_hop' in packet_data:
-                log.error("Outbound pool file with no Next Hop header.")
-                self.out_pool.delete(filename)
-                continue
-            if not 'expire' in packet_data:
-                log.error("Outbound pool file with no Expire header.")
-                self.out_pool.delete(filename)
-                continue
-            try:
-                expire = timing.dateobj(packet_data['expire'])
+                expire = timing.dateobj(msg['Expire'])
             except ValueError, e:
                 log.error("Invalid Expire: %s", e)
                 self.out_pool.delete(filename)
@@ -226,20 +234,20 @@ class Server(Daemon):
                 # that date, we give up trying to send it.  Sadly, a
                 # message is lost but messages can't be queued forever.
                 log.warn("Giving up on sending msg to %s.",
-                         packet_data['next_hop'])
+                         msg['Next-Hop'])
                 #TODO Statistically mark down this remailer.
                 self.out_pool.delete(filename)
                 continue
 
             # That's all the packet valdation completed.  From here on, it's
             # about trying to send the message.
-            payload = {'base64': packet_data['packet']}
+            payload = {'base64': msg.get_payload()}
             try:
                 # Actually try to send the message to the next_hop.  There are
                 # probably a lot of failure conditions to handle at this point.
-                recipient = '%s/collector.py/msg' % packet_data['next_hop']
+                recipient = '%s/collector.py/msg' % msg['Next-Hop']
                 log.debug("Attempting delivery of %s to %s",
-                          os.path.basename(filename), packet_data['next_hop'])
+                          os.path.basename(filename), msg['Next-Hop'])
                 r = requests.post(recipient, data=payload)
                 if r.status_code == requests.codes.ok:
                     self.out_pool.delete(filename)

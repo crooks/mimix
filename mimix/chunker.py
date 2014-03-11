@@ -133,17 +133,16 @@ class Chunker(object):
                 return False
         return True
 
-    def assemble(self):
-        for msgid in self.list_msgids():
-            if self.chunk_check(msgid):
-                criteria = (msgid,)
-                self.exe('''SELECT chunk, chunknum FROM chunker
-                            WHERE msgid=?
-                            ORDER BY chunknum''', criteria)
-                d = self.cursor.fetchall()
-                msg = Parser().parsestr(''.join([e[0] for e in d]))
-                sendmail.sendmsg(msg)
-                self.delete(msgid)
+    def assemble(self, msgid, filename):
+        criteria = (msgid,)
+        self.exe('''SELECT chunk, chunknum FROM chunker
+                    WHERE msgid=?
+                    ORDER BY chunknum''', criteria)
+        d = self.cursor.fetchall()
+        msg = (''.join([e[0] for e in d]))
+        with open(filename, 'w') as f:
+            f.write(msg)
+        self.delete(msgid)
 
     def list_msgids(self):
         self.exe('SELECT DISTINCT msgid FROM chunker')
