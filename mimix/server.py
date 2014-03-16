@@ -83,7 +83,11 @@ class Server(Daemon):
                               config.get('database', 'directory'))
         with sqlite3.connect(dbkeys) as conn:
             keyserv = keys.Server(conn)
+            seckey = keys.SecCache(conn)
+            idlog = keys.IDLog(conn)
             chunks = chunker.Chunker(conn)
+            self.seckey = seckey
+            self.idlog = idlog
             self.keyserv = keyserv
             self.chunks = chunks
             self.conn = conn
@@ -116,6 +120,15 @@ class Server(Daemon):
                     self.count_email_success = 0
                     self.count_email_failed = 0
                     self.count_dummies = 0
+                    # Prune the PacketID Log
+                    n = self.idlog.prune()
+                    if n > 0:
+                        log.info("Pruning ID Log removed %s Packet IDs.", n)
+                        log.info("After pruning, Packet ID Log contains %s "
+                                 "entries.", self.idcount())
+                    # Empty the Secret Key cache
+                    self.seckey.reset()
+
                 # Process outbound messages first.  This ensures that no
                 # message is received, processed and sent during the same
                 # iteration.  Not sure if doing so would be a bad thing for
@@ -138,7 +151,7 @@ class Server(Daemon):
         self.inject_dummy(config.getint('pool', 'indummy'))
         generator = self.in_pool.select_all()
         for filename in generator:
-            m = mix.Decode(self.keyserv)
+            m = mix.Decode(self.seckey, self.idlog)
             try:
                 m.file_to_packet(filename)
             except mix.PacketError, e:
@@ -168,12 +181,16 @@ class Server(Daemon):
                           m.packet_info.chunknum,
                           m.packet_info.numchunks,
                           m.packet_info.exit_type)
-                if not self.keyserv.get_smtp():
+                if not config.getboolean('general', 'smtp'):
                     # This Remailer doesn't support SMTP.  The message needs
                     # to be rand-hopped.
                     log.debug("Message requires SMTP capable Remailer. "
                               "Rand-hopping it to an exit node.")
-                    self.randhop(m.packet_info)
+                    if m.packet_info.numchunks == 1:
+                        self.randhop(m.packet_info)
+                    else:
+                        log.warn("Oh dear, we currently can't randhop "
+                                 "multipart messages.")
                     self.in_pool.delete(filename)
                     continue
                 # Exit and SMTP type: Write it to the outbound_pool for
@@ -194,6 +211,8 @@ class Server(Daemon):
                     continue
             else:
                 # Not an exit, write it to the outbound pool.
+                if config.getboolean('general', 'hopspy'):
+                    self.keyserv.middle_spy(m.packet_info.next_hop)
                 self.out_pool.packet_write(m)
                 self.in_pool.delete(filename)
 
@@ -208,7 +227,7 @@ class Server(Daemon):
         generator = self.out_pool.select_subset()
         self.inject_dummy(config.getint('pool', 'outdummy'))
         for filename in generator:
-            m = mix.Decode(self.keyserv)
+            #m = mix.Decode(self.seckey, self.idlog)
             with open(filename, 'r') as f:
                 msg = Parser().parse(f)
             if 'To' in msg:

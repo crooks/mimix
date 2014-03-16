@@ -72,28 +72,20 @@ def send_msg(args):
             sys.exit(1)
         sys.stdout.write("Chain: \"%s\"\n" % chain.chainstr)
 
-        plaintext = msg.as_string()
         messageid = Random.new().read(16)
         # Encode the message
-        size = len(plaintext)
-        n = int(math.ceil(size / 10240.0))
+        generator = libkeys.chunk(msg)
         # Here begins the loop for each message chunk.
-        for c in range(n):
-            if c > 0:
+        for c, n, t in generator:
+            if c > 1:
                 # After each chunk the chain needs to be recreated using the
                 # same exit header as the previous pass.
                 chain.create(chainstr=chain.exitstr)
-            cn = c + 1
-            start = c * 10240
-            end = (c + 1) * 10240
-            if end > size:
-                end = size
-            sys.stdout.write("Encoding chunk %s of %s\n" % (cn, n))
-            sys.stdout.write("Bytes %s to %s\n" % (start, end))
+            sys.stdout.write("Encoding chunk %s of %s\n" % (c, n))
             exit = mix.ExitEncode()
-            exit.set_chunks(messageid, cn, n)
+            exit.set_chunks(messageid, c, n)
             exit.set_exit_type(0)
-            exit.set_payload(plaintext[start:end])
+            exit.set_payload(t)
             m = mix.Encode(conn)
             sys.stdout.write("Chain: %s\n" % chain.chain)
             m.encode(exit, chain.chain)

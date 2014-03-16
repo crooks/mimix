@@ -33,7 +33,41 @@ import libkeys
 from Crypto.Random import random
 
 
-class Server(object):
+class SecCache(object):
+    def __init__(self, conn):
+        self.conn = conn
+        self.cursor = conn.cursor()
+        self.exe = self.cursor.execute
+        self.cache = {}
+
+    def __getitem__(self, keyid):
+        """ Return the Secret Key object associated with the keyid provided.
+            If no key is found, return None.  This function also maintains
+            the Secret Key Cache.
+        """
+        if keyid in self.cache:
+            log.debug("Seckey cache hit for %s", keyid)
+            return self.cache[keyid]
+        log.debug("Seckey cache miss for %s", keyid)
+        self.exe('''SELECT seckey FROM keyring
+                    WHERE keyid=? AND seckey IS NOT NULL''', (keyid,))
+        data = self.cursor.fetchone()
+        if data is None or data[0] is None:
+            return None
+        self.cache[keyid] = RSA.importKey(data[0])
+        log.info("%s: Got Secret Key from DB", keyid)
+        return self.cache[keyid]
+
+    def reset(self):
+        """
+        Secret keys are cached when running as a remailer.  This is because
+        the key is required to decrypt every received message.  Clearing the
+        cache ensures it doesn't become stale with expired keys.
+        """
+        self.cache = {}
+
+
+class IDLog(object):
     """
     """
     def __init__(self, conn):
@@ -41,14 +75,9 @@ class Server(object):
         self.cursor = conn.cursor()
         self.exe = self.cursor.execute
         if 'idlog' not in libkeys.list_tables(conn):
-            self.create_idlog()
-        self.daily_events()
+            self.create()
 
-    def idcount(self):
-        self.exe('SELECT COUNT(pid) FROM idlog')
-        return self.cursor.fetchone()[0]
-
-    def create_idlog(self):
+    def create(self):
         """
         Table Structure
         [ pid           Text                              Message ID ]
@@ -58,7 +87,7 @@ class Server(object):
         self.exe('CREATE TABLE idlog (pid TEXT, date DATE)')
         self.conn.commit()
 
-    def idlog(self, pid):
+    def __getitem__(self, pid):
         b64pid = pid.encode('base64')
         criteria = (b64pid,)
         self.exe('SELECT pid FROM idlog WHERE pid = ?', criteria)
@@ -70,12 +99,26 @@ class Server(object):
         self.conn.commit()
         return False
 
-    def idprune(self):
+    def count(self):
+        self.exe('SELECT COUNT(pid) FROM idlog')
+        return self.cursor.fetchone()[0]
+
+    def prune(self):
         numdays = config.getint('general', 'idage')
         criteria = (timing.date_past(days=numdays),)
         self.exe('DELETE FROM idlog WHERE date <= ?', criteria)
         self.conn.commit()
         return self.cursor.rowcount
+
+
+class Server(object):
+    """
+    """
+    def __init__(self, conn):
+        self.conn = conn
+        self.cursor = conn.cursor()
+        self.exe = self.cursor.execute
+        self.daily_events()
 
     def unadvertise(self):
         # Stop advertising keys that expire in the next 28 days.
@@ -146,12 +189,6 @@ class Server(object):
         n = libkeys.delete_expired(self.conn)
         if n > 0:
             log.info("Deleted %s keys from the keyring", n)
-        # Delete expired records from the Packet ID Log
-        n = self.idprune()
-        if n > 0:
-            log.info("Pruning ID Log removed %s Packet IDs.", n)
-        log.info("After pruning, Packet ID Log contains %s entries.",
-                 self.idcount())
         # If any seckeys expired, it's likely a new key will be needed.  Check
         # what key should be advertised and advertise it.
         keyinfo = libkeys.server_key(self.conn)
@@ -163,11 +200,6 @@ class Server(object):
             mykey = (keyinfo[0], RSA.importKey(keyinfo[1]))
             log.info("Advertising current KeyID: %s", mykey[0])
         self.advertise(mykey)
-        # Secret keys are cached when running as a remailer.  This is because
-        # the key is required to decrypt every received message.  Clearing the
-        # cache at this point ensures it doesn't become stale with expired
-        # keys.
-        self.sec_cache = {}
         # This is a list of known remailer addresses.  It's referenced each
         # time this remailer functions as an Intermediate Hop.  The message
         # contains the address of the next_hop and this list confirms that
@@ -182,27 +214,6 @@ class Server(object):
 
         # Set the daily trigger to today's date.
         self.daily_trigger = timing.today()
-
-    def get_secret(self, keyid):
-        """ Return the Secret Key object associated with the keyid provided.
-            If no key is found, return None.  This function also maintains
-            the Secret Key Cache.
-        """
-        if keyid in self.sec_cache:
-            log.debug("Seckey cache hit for %s", keyid)
-            return self.sec_cache[keyid]
-        log.debug("Seckey cache miss for %s", keyid)
-        self.exe('SELECT seckey,smtp FROM keyring WHERE keyid=?', (keyid,))
-        data = self.cursor.fetchone()
-        if data is None or data[0] is None:
-            return None
-        self.sec_cache[keyid] = RSA.importKey(data[0])
-        self.do_smtp = bool(data[1])
-        log.info("%s: Got Secret Key from DB", keyid)
-        return self.sec_cache[keyid]
-
-    def get_smtp(self):
-        return self.do_smtp
 
     def advertise(self, mykey):
         # mykey is a tuple of (Keyid, BinarySecretKey)

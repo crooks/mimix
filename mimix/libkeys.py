@@ -27,6 +27,7 @@ import timing
 import sqlite3
 import sys
 import requests
+import math
 from Crypto.Random import random
 from Crypto.PublicKey import RSA
 
@@ -227,6 +228,17 @@ def fetch_remailer_conf(url):
         if known_remailers.pop(0).startswith("Known remailers"):
             keys['known'] = known_remailers
     return keys
+
+
+def chunk(msg):
+    s = msg.as_string()
+    size = len(s)
+    numchunks = int(math.ceil(size / 10240.0))
+    for i in range(0, numchunks):
+        s_start = i * 10240
+        s_end = (i + 1) * 10240
+        chunknum = i + 1
+        yield chunknum, numchunks, s[s_start:s_end]
 
 
 def insert_remailer_conf(conn, keys):

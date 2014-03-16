@@ -308,10 +308,11 @@ class Encode():
 
 
 class Decode():
-    def __init__(self, keystore):
+    def __init__(self, seckey, idlog):
         # Encode and decode operations require the keystore so scoping it
         # in the Class kind of makes sense.
-        self.keystore = keystore
+        self.seckey = seckey
+        self.idlog = idlog
 
     def decode(self):
         assert len(self.packet) == 20480
@@ -325,7 +326,7 @@ class Decode():
             raise PacketError("Digest mismatch")
         # Extract the keyid required to decrypt the message.
         keyid = tophead[0:16].encode('hex')
-        secret_key = self.keystore.get_secret(keyid)
+        secret_key = self.seckey[keyid]
         if secret_key is None:
             raise PacketError("Unknown recipient secret key")
         cipher = PKCS1_OAEP.new(secret_key)
@@ -337,7 +338,7 @@ class Decode():
         # Now the inner header can be decrypted.
         cipher = AES.new(aes, AES.MODE_CFB, iv)
         inner = InnerDecode(cipher.decrypt(tophead[546:546 + 384]))
-        if self.keystore.idlog(inner.packet_id):
+        if self.idlog[inner.packet_id]:
             raise PacketError("Packet ID collision")
         # If this is an intermediate message, the remaining 9 header sections
         # need to be decrypted using the AES key from the inner header and the
@@ -352,8 +353,6 @@ class Decode():
                 log.warn("Anti-tag digest failure.  This message might have "
                          "been tampered with.")
                 raise PacketError("Anti-tag digest mismatch")
-            if config.getboolean('general', 'hopspy'):
-                self.keystore.middle_spy(inner.packet_info.next_hop)
             for h in range(9):
                 cipher = AES.new(inner.aes, AES.MODE_CFB,
                                  inner.packet_info.ivs[h])
