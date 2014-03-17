@@ -128,7 +128,7 @@ def keyring_update(args):
                 conn.commit()
                 sys.stdout.write("Toggled %s exit status for remailer: %s\n"
                                  % (cur.rowcount, args.name))
-                
+
         if args.latency:
             if not args.name:
                 sys.stderr.write("Error: --latency requires "
@@ -216,7 +216,6 @@ def remailer_delete(args):
             sys.stdout.write("Deleted %s entries\n" % cur.rowcount)
 
 
-
 def server_mode(args):
     pidfile = os.path.join(config.get('general', 'piddir'),
                            config.get('general', 'pidfile'))
@@ -229,11 +228,12 @@ def server_mode(args):
     elif args.run:
         s.run(conlog=True)
 
+
 def dbkeys():
     """Shortcut the simply returns the fully-qualified DB filename.
     """
     return os.path.join(config.get('database', 'path'),
-           config.get('database', 'directory'))
+                        config.get('database', 'directory'))
 
 
 def remailer_conf(conn, url):
@@ -276,13 +276,13 @@ def remailer_conf_walk(conn, url):
             for u in conf_keys['known']:
                 remailer_conf(conn, u)
         else:
-            sys.stderr.write("%s: No other remailers known\n" % conf_keys['name'])
+            sys.stderr.write("%s: No other remailers known\n"
+                             % conf_keys['name'])
             sys.exit(1)
     else:
         sys.stderr.write("%s: Has no Known Remailers section in its config."
                          % conf_keys['name'])
         sys.exit(1)
-
 
 
 parser = argparse.ArgumentParser(description='Mimix Client')
