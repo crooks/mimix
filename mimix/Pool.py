@@ -73,7 +73,8 @@ class Pool():
         """
         files = os.listdir(self.pooldir)
         numfiles = len(files)
-        self.log.debug("Pool contains %s messages", numfiles)
+        if numfiles > 0:
+            self.log.debug("Pool contains %s messages", numfiles)
 
         if numfiles < self.size:
             # The pool is too small to send messages.

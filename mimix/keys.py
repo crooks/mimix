@@ -183,9 +183,12 @@ class Server(object):
         Perform once per day events.
         """
         log.info("Running Keyserver daily housekeeping actions.")
+        # Stop advertising local secret keys that are within the pre-expiry
+        # period.
         n = libkeys.unadvertise(self.conn)
         if n > 0:
             log.info("Stopped advertising %s secret keys", n)
+        # Delete secret keys that have expired.
         n = libkeys.delete_expired(self.conn)
         if n > 0:
             log.info("Deleted %s keys from the keyring", n)
@@ -212,9 +215,6 @@ class Server(object):
         # requests being sent to dead or never there remailers.
         self.fetch_cache = []
 
-        # Set the daily trigger to today's date.
-        self.daily_trigger = timing.today()
-
     def advertise(self, mykey):
         # mykey is a tuple of (Keyid, BinarySecretKey)
         criteria = (mykey[0],)
@@ -223,26 +223,26 @@ class Server(object):
         name, address, fr, to, smtp, pub = self.cursor.fetchone()
         filename = os.path.join(config.get('http', 'wwwdir'),
                                 'remailer-conf.txt')
-        smtptxt = libkeys.booltext(smtp)
-        f = open(filename, 'w')
-        f.write("Name: %s\n" % name)
-        f.write("Address: %s\n" % address)
-        f.write("KeyID: %s\n" % mykey[0])
-        f.write("Valid From: %s\n" % fr)
-        f.write("Valid To: %s\n" % to)
-        f.write("SMTP: %s\n" % smtptxt)
-        f.write("\n%s\n\n" % pub)
-        # Only the addresses of known remailers are advertised. It's up to the
-        # third party to gather further details directly from the source.  The
-        # query only grabs distinct addresses as we only expect to find a
-        # single remailer per address, even if multiple keys may be current.
-        self.exe('''SELECT DISTINCT address FROM keyring
-               WHERE keyid != ? AND advertise''', criteria)
-        data = self.cursor.fetchall()
-        f.write("Known remailers:-\n")
-        for row in data:
-            f.write("%s\n" % row)
-        f.close()
+        with open(filename, 'w') as f:
+            f.write("Name: %s\n" % name)
+            f.write("Address: %s\n" % address)
+            f.write("KeyID: %s\n" % mykey[0])
+            f.write("Valid From: %s\n" % fr)
+            f.write("Valid To: %s\n" % to)
+            f.write("SMTP: %s\n" % libkeys.booltext(smtp))
+            f.write("\n%s\n\n" % pub)
+            # Only the addresses of known remailers are advertised. It's up to
+            # the third party to gather further details directly from the
+            # source.  The query only grabs distinct addresses as we only
+            # expect to find a single remailer per address, even if multiple
+            # keys may be current.
+            self.exe('''SELECT DISTINCT address FROM keyring
+                   WHERE keyid != ? AND advertise''', criteria)
+            data = self.cursor.fetchall()
+            f.write("Known remailers:-\n")
+            for row in data:
+                f.write("%s\n" % row)
+        log.debug("Advertised my key: %s", mykey[0])
 
     def middle_spy(self, address, force_fetch=False):
         """

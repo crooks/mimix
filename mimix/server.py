@@ -121,13 +121,13 @@ class Server(Daemon):
                     self.count_email_failed = 0
                     self.count_dummies = 0
                     # Prune the PacketID Log
-                    n = self.idlog.prune()
+                    n = idlog.prune()
                     if n > 0:
                         log.info("Pruning ID Log removed %s Packet IDs.", n)
                         log.info("After pruning, Packet ID Log contains %s "
-                                 "entries.", self.idcount())
+                                 "entries.", idlog.idcount())
                     # Empty the Secret Key cache
-                    self.seckey.reset()
+                    seckey.reset()
 
                 # Process outbound messages first.  This ensures that no
                 # message is received, processed and sent during the same
