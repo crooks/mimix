@@ -28,7 +28,7 @@ import sqlite3
 import sys
 import logging
 import requests
-import libkeys
+import libmimix
 from Crypto.Random import random
 
 
@@ -73,7 +73,7 @@ class IDLog(object):
         self.conn = conn
         self.cursor = conn.cursor()
         self.exe = self.cursor.execute
-        if 'idlog' not in libkeys.list_tables(conn):
+        if 'idlog' not in libmimix.list_tables(conn):
             self.create()
 
     def create(self):
@@ -184,16 +184,16 @@ class Server(object):
         log.info("Running Keyserver daily housekeeping actions.")
         # Stop advertising local secret keys that are within the pre-expiry
         # period.
-        n = libkeys.unadvertise(self.conn)
+        n = libmimix.unadvertise(self.conn)
         if n > 0:
             log.info("Stopped advertising %s secret keys", n)
         # Delete secret keys that have expired.
-        n = libkeys.delete_expired(self.conn)
+        n = libmimix.delete_expired(self.conn)
         if n > 0:
             log.info("Deleted %s keys from the keyring", n)
         # If any seckeys expired, it's likely a new key will be needed.  Check
         # what key should be advertised and advertise it.
-        keyinfo = libkeys.server_key(self.conn)
+        keyinfo = libmimix.server_key(self.conn)
         if keyinfo is None:
             log.info("No valid secret key found.  Generating a new one.")
             mykey = self.generate()
@@ -206,7 +206,7 @@ class Server(object):
         # time this remailer functions as an Intermediate Hop.  The message
         # contains the address of the next_hop and this list confirms that
         # address is a known remailer.
-        #self.known_addresses = libkeys.all_remailers_by_address(self.conn)
+        #self.known_addresses = libmimix.all_remailers_by_address(self.conn)
         # Setting known_addresses to an empty list forces the remailer to
         # attempt retreival of each remailer it encounters.
         self.known_addresses = []
@@ -228,7 +228,7 @@ class Server(object):
             f.write("KeyID: %s\n" % mykey[0])
             f.write("Valid From: %s\n" % fr)
             f.write("Valid To: %s\n" % to)
-            f.write("SMTP: %s\n" % libkeys.booltext(smtp))
+            f.write("SMTP: %s\n" % libmimix.booltext(smtp))
             f.write("\n%s\n\n" % pub)
             # Only the addresses of known remailers are advertised. It's up to
             # the third party to gather further details directly from the
@@ -263,15 +263,15 @@ class Server(object):
         self.fetch_cache.append(address)
         log.info("Middle spy attempting to fetch: %s", address)
         try:
-            conf_keys = libkeys.fetch_remailer_conf(address)
-        except libkeys.KeyImportError, e:
+            conf_keys = libmimix.fetch_remailer_conf(address)
+        except libmimix.KeyImportError, e:
             log.warn("Remailer-Conf retrieval failed for %s with error: %s",
                      address, e)
             return 0
         # Check how many records we currently have in the DB for this
         # address.  In theory it should never be more than one but
         # this is a good opportunity to make absolutely sure.
-        count = libkeys.count_addresses(self.conn, conf_keys['address'])
+        count = libmimix.count_addresses(self.conn, conf_keys['address'])
         if count > 1:
             # If there is more than one record with the given address,
             # ambiguity wins.  We don't know which is correct so it's safest to
@@ -281,11 +281,11 @@ class Server(object):
         if count == 0:
             log.info("Inserting Remailer \"%s\" into our Directory.",
                      conf_keys['name'])
-            libkeys.insert_remailer_conf(self.conn, conf_keys)
+            libmimix.insert_remailer_conf(self.conn, conf_keys)
         elif count == 1:
             log.info("Refreshing Directory entry for Remailer \"%s\"",
                      conf_keys['name'])
-            libkeys.update_remailer_conf(self.conn, conf_keys)
+            libmimix.update_remailer_conf(self.conn, conf_keys)
         self.known_addresses.append(address)
 
 

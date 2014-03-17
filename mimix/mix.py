@@ -25,7 +25,7 @@ import hashlib
 import logging
 import os.path
 import sys
-import libkeys
+import libmimix
 from Config import config
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
@@ -270,7 +270,7 @@ class Encode():
             aes = Random.new().read(32)
             iv = Random.new().read(16)
             # get_public() returns a Tuple of (keyid, address, pubkey)
-            rem_info = libkeys.get_public(self.conn, this_hop_name)
+            rem_info = libmimix.get_public(self.conn, this_hop_name)
             cipher = PKCS1_OAEP.new(rem_info[2])
             rsa_data = cipher.encrypt(aes)
             len_rsa = len(rsa_data)

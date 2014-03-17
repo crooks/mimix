@@ -25,7 +25,7 @@ import os.path
 import math
 import sqlite3
 import requests
-import libkeys
+import libmimix
 import Chain
 import mix
 import server
@@ -73,7 +73,7 @@ def send_msg(args):
 
         messageid = Random.new().read(16)
         # Encode the message
-        generator = libkeys.chunk(msg)
+        generator = libmimix.chunk(msg)
         # Here begins the loop for each message chunk.
         for c, n, t in generator:
             if c > 1:
@@ -112,8 +112,8 @@ def send_msg(args):
 def keyring_update(args):
     with sqlite3.connect(dbkeys()) as conn:
         conn.text_factory = str
-        if 'keyring' not in libkeys.list_tables(conn):
-            libkeys.create_keyring(conn)
+        if 'keyring' not in libmimix.list_tables(conn):
+            libmimix.create_keyring(conn)
             sys.stdout.write("Created \"keyring\" table in %s\n" % dbkeys())
         cursor = conn.cursor()
         exe = cursor.execute
@@ -166,7 +166,7 @@ def keyring_update(args):
             remailer_conf(conn, args.fetchurl)
 
     if args.expire:
-        n = libkeys.delete_expired(conn)
+        n = libmimix.delete_expired(conn)
         sys.stdout.write("Expired %s remailers\n" % n)
 
 
@@ -190,7 +190,7 @@ def remailer_info(args):
 
         elif args.secret:
             if args.name:
-                sk = libkeys.secret_by_name(conn, args.name)
+                sk = libmimix.secret_by_name(conn, args.name)
                 if sk:
                     sys.stdout.write(sk[0] + "\n")
                 else:
@@ -207,7 +207,7 @@ def remailer_delete(args):
             conn.commit()
             sys.stdout.write("Deleted %s entries\n" % cur.rowcount)
         elif args.address:
-            n = libkeys.delete_by_address(conn, args.address)
+            n = libmimix.delete_by_address(conn, args.address)
             sys.stdout.write("Deleted %s entries\n" % n)
         elif args.name:
             criteria = (args.name,)
@@ -238,13 +238,13 @@ def dbkeys():
 
 def remailer_conf(conn, url):
     try:
-        conf_keys = libkeys.fetch_remailer_conf(url)
-    except libkeys.KeyImportError, e:
+        conf_keys = libmimix.fetch_remailer_conf(url)
+    except libmimix.KeyImportError, e:
         sys.stderr.write("Remailer-Conf retrieval failed for %s with "
                          "error: %s\n" % (url, e))
         sys.exit(1)
     sys.stdout.write("Retrieved: %s (AKA %s).\n" % (url, conf_keys['name']))
-    count = libkeys.count_addresses(conn, url)
+    count = libmimix.count_addresses(conn, url)
     if count > 1:
         # If there is more than one record with the given address,
         # ambiguity wins.  We don't know which is correct so it's safest to
@@ -252,7 +252,7 @@ def remailer_conf(conn, url):
         sys.stderr.write("Oops! We have more than one key already on "
                          "file for %s.  Deleting them and using the "
                          "newly retrieved copy.\n" % url)
-        n = libkeys.delete_by_address(conn, url)
+        n = libmimix.delete_by_address(conn, url)
         sys.stdout.write("Deleted %s records for %s\n" % (n, url))
         count = 0
     # At this point, count can only be 0 or 1.
@@ -260,11 +260,11 @@ def remailer_conf(conn, url):
     if count == 0:
         sys.stdout.write("Inserting new Remailer \"%s\" into our Directory.\n"
                          % conf_keys['name'])
-        libkeys.insert_remailer_conf(conn, conf_keys)
+        libmimix.insert_remailer_conf(conn, conf_keys)
     elif count == 1:
         sys.stdout.write("Refreshing existing Directory entry for Remailer "
                          "\"%s\"\n" % conf_keys['name'])
-        libkeys.update_remailer_conf(conn, conf_keys)
+        libmimix.update_remailer_conf(conn, conf_keys)
     return conf_keys
 
 

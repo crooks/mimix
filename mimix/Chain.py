@@ -1,6 +1,6 @@
 import os.path
 import sqlite3
-import libkeys
+import libmimix
 import logging
 from Config import config
 from Crypto.Random import random
@@ -35,7 +35,7 @@ class Chain(object):
             raise ChainError("Maximum chain length exceeded")
         exit = nodes.pop()
         if exit == "*":
-            exits = libkeys.contenders(self.conn, smtp=True)
+            exits = libmimix.contenders(self.conn, smtp=True)
             # contenders is a list of exit remailers that don't conflict with
             # any hardcoded remailers within the proximity of "distance".
             # Without this check, the exit remailer would be selected prior to
@@ -44,7 +44,7 @@ class Chain(object):
             if len(contenders) == 0:
                 raise ChainError("No exit remailers meet selection criteria")
             exit = contenders[random.randint(0, len(exits) - 1)]
-        elif exit not in libkeys.all_remailers_by_name(self.conn):
+        elif exit not in libmimix.all_remailers_by_name(self.conn):
             log.error("%s: Invalid hardcoded exit remailer", exit)
             raise ChainError("Invalid exit node")
         chain = [exit]
@@ -64,8 +64,8 @@ class Chain(object):
         distance_exclude = [exit]
         # All remailers is used to check that hardcoded links are all known
         # remailers.
-        all_remailers = libkeys.all_remailers_by_name(self.conn)
-        remailers = libkeys.contenders(self.conn)
+        all_remailers = libmimix.all_remailers_by_name(self.conn)
+        remailers = libmimix.contenders(self.conn)
         # If processing reaches this point, at least one remailer (besides an
         # exit) is required.  If we have none to choose from, raise an error.
         if len(remailers) == 0:
