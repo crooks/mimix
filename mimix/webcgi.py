@@ -4,7 +4,7 @@
 #
 # webcgi.py - CGI file for storing Mimix messages in a Pool
 #
-# Copyright (C) 2013 Steve Crook <steve@mixmin.net>
+# Copyright (C) 2014 Steve Crook <steve@mixmin.net>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by the

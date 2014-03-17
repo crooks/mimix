@@ -2,7 +2,8 @@
 #
 # vim: tabstop=4 expandtab shiftwidth=4 autoindent
 #
-# Copyright (C) 2012 Steve Crook <steve@mixmin.net>
+# timing.py - Some basic date/time functions
+# Copyright (C) 2014 Steve Crook <steve@mixmin.net>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by the
@@ -13,9 +14,6 @@
 # WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY
 # or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 # for more details.
-#
-# This file forms the start on some work to allow newsgroup filters to be
-# added and auto-expired after a defined period.
 
 import datetime
 import time
