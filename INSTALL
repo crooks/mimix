@@ -16,3 +16,31 @@ On a Debian platform, these can be installed as follows:
 apt-get install libapache2-mod-python
 apt-get install python-crypto
 apt-get install python-requests
+
+
+Once Mimix is installed, it needs to be run under a Unix system account.  Any
+account can be used for client functionality but a dedicated account is
+recommended for running Mimix as a server.
+
+Before anything else, you need to build a directory of known remailers for
+your client to reference.  The easiest way to do this is to import a directory
+from one of the known remailers.  This can be done with the following command:
+
+mimix update --fetch http://www.mixmin.net:8080
+
+One option is to repeat this command for each known remailer but that can be
+time-consuming and prone to error.  Another option is to append the '--walk'
+option.  This will instruct the client to not only import the specified
+remailer, but also to import all the remailers it knows about. E.g.:-
+
+mimix update --fetch http://www.mixmin.net:8080 --walk
+
+Your remailer client should now be ready to go.  You can run:-
+mimix --help
+for a list of available commands followed by:-
+mimix command --help
+for further details of the command options.
+
+Also, check out the provided mimixrc.sample file which contains configuration
+options that can be defined.  This file is compulsory if you intend to run
+Mimix as a server.

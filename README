@@ -7,6 +7,9 @@ HTTP.  This makes it easy to blend in with the large traffic volume and
 userbase of Tor (http://www.torproject.org).  Latency is still provided by
 virtue of Dynamic Mix Pools at each Remailer node.
 
+For information on how to setup and run Mimix, please refer to the INSTALL
+file included with this package.
+
 https://github.com/crooks/mimix
 
 This application is released under the GPL license.  Please see the included
