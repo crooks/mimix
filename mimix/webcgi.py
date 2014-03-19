@@ -34,10 +34,10 @@ content = form.getvalue('mimix')
 if content is None:
     sys.exit(0)
 if '-----BEGIN MIMIX MESSAGE-----' in content:
-        while True:
-            fn = os.path.join('/home/crooks/mimix/inbound_pool',
-                              'm' + Random.new().read(4).encode('hex'))
-            if not os.path.isfile(fn):
-                break
+    while True:
+        fn = os.path.join('/home/crooks/mimix/inbound_pool',
+                          'm' + Random.new().read(4).encode('hex'))
+        if not os.path.isfile(fn):
+            break
     with open(fn, 'w') as f:
         f.write(content)
