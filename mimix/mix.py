@@ -31,6 +31,72 @@ from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
 
+"""
+The Mimix packet comprises two principle components of equal size:-
+
+[ Headers     10240 Bytes ]
+[ Payload     10240 Bytes ]
+
+The headers can be further broken down into 10 individual headers, each
+representing one of the (up to) 10 remailer hops a message can traverse.
+
+[ Header1      1024 Bytes ]
+[ Header2      1024 Bytes ]
+...
+[ Header10     1024 Bytes ]
+
+Each recipient remailer is only concerned with the first header in the stack.
+Once it finishes processing the message, that header is discarded, and the next
+remailer in the chain process the top header again (previously Header2).
+
+Each 1024 Byte header contains the following, fixed length components:-
+
+    [ Public key ID                 16 bytes ]
+    [ Length of RSA-encrypted data   2 bytes ]
+    [ RSA-encrypted session key    512 bytes ]
+    [ Initialization vector         16 bytes ]
+    [ Encrypted header part        384 bytes ]
+    [ Padding                       30 bytes ]
+    [ Message digest                64 bytes ]
+
+The 384 Byte Encrypted Header (aka Inner Header), once decrypted, contains
+the following components:-
+
+    [ Packet ID                     16 bytes ]
+    [ AES key                       32 bytes ]
+    [ Packet type identifier         1 byte  ]
+    [ Packet Info                  256 bytes ]
+    [ Timestamp                      2 bytes ]
+    [ Padding                       13 bytes ]
+    [ Message digest                64 bytes ]
+
+The content of the 256 Byte Packet Info depends on the Packet Type.  For
+Packet Type 0 (Intermediate messages (Messages sent between remailers)), the
+content comprises:-
+
+    [ 9 Initialization vectors     144 bytes ]
+    [ Next address                  80 bytes ]
+    [ Anti-tag digest               32 bytes ]
+
+For Packet Type 1 (Exit messages (Messages destined for a recipient)), the
+content comprises:-
+
+    [ Chunk number                   1 byte  ]
+    [ Number of chunks               1 byte  ]
+    [ Message ID                    16 bytes ]
+    [ Initialization vector         16 bytes ]
+    [ Exit type                      1 byte  ]
+    [ Payload (chunk) length         2 bytes ]
+    [ Payload (chunk) digest        32 bytes ]
+    [ Padding                      187 bytes ]
+
+Currently, only two Exit-Types are understood:-
+
+    [ Exit Type 0          SMTP to Recipient ]
+    [ Exit Type 1    Dummy Message (discard) ]
+
+"""
+
 
 class PacketError(Exception):
     pass
@@ -62,9 +128,10 @@ class IntermediateEncode(object):
         self.antitag = digest
 
     def packetize(self):
-        packet = struct.pack('144s80s32s', self.ivsstr,
-                                           str(self.next_hop_padded),
-                                           self.antitag)
+        packet = struct.pack('144s80s32s',
+                             self.ivsstr,
+                             str(self.next_hop_padded),
+                             self.antitag)
         return packet
 
 
@@ -373,7 +440,8 @@ class Decode():
 
         elif inner.pkt_type == "1":
             cipher = AES.new(inner.aes, AES.MODE_CFB, inner.packet_info.iv)
-            inner.packet_info.set_payload(cipher.decrypt(self.packet[10240:20480]))
+            inner.packet_info.set_payload(
+                cipher.decrypt(self.packet[10240:20480]))
             self.is_exit = True
         self.packet_info = inner.packet_info
 
@@ -394,7 +462,7 @@ class Decode():
                     packet_pos = 2
                 if packet_pos == 2:
                     if len(line) < 70:
-                       continue
+                        continue
                     else:
                         packet_pos = 3
                 if packet_pos == 3:
@@ -459,9 +527,3 @@ if (__name__ == "__main__"):
     log.addHandler(handler)
     dbkeys = os.path.join(config.get('database', 'path'),
                           config.get('database', 'directory'))
-    #import sqlite3
-    #with sqlite3.connect(dbkeys) as conn:
-    #    mix = Encode(conn)
-    filename = '/home/crooks/mimix/inbound_pool/ma4e43f0c'
-    decode = Decode(1)
-    decode.file_to_packet(filename)

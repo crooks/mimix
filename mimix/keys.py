@@ -241,7 +241,7 @@ class Server(object):
             f.write("Known remailers:-\n")
             for row in data:
                 f.write("%s\n" % row)
-        log.debug("Advertised my key: %s", mykey[0])
+        log.debug("Wrote HTML config to: %s", filename)
 
     def middle_spy(self, address, force_fetch=False):
         """
