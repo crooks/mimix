@@ -106,21 +106,23 @@ else:
 if os.path.isfile(configfile):
     config.read(configfile)
 
-else:
-    sys.stderr.write("No configuration file found.\nThe expected "
-                     "location is %s.  This can be overridden by defining "
-                     "the MIMIX environment variable.\n" % configfile)
-    sys.exit(1)
-
-if config.get('general', 'address').endswith('/'):
-    config.set('general', 'address', config.get('general',
-                                                'address').rstrip('/'))
 # Make required directories
 mkdir(basedir)
 mkdir(config.get('database', 'path'))
 if config.has_option('general', 'address'):
     # If an address is set, the assumption is made that this node will run as
     # a server.
+    # Strip any trailing slash from the remailer address.
+    if config.get('general', 'address').endswith('/'):
+        config.set('general', 'address', config.get('general',
+                                                    'address').rstrip('/'))
+
+    if not os.path.isfile(configfile):
+        sys.stderr.write("No configuration file found.\nThe expected "
+                         "location is %s.\nThis can be overridden by defining "
+                         "the MIMIX environment variable.\n" % configfile)
+        sys.exit(1)
+
     mkdir(config.get('general', 'piddir'))
     mkdir(config.get('logging', 'dir'))
     mkdir(config.get('pool', 'indir'))
