@@ -20,7 +20,8 @@
 # You should have received a copy of the GNU General Public License along with
 # this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from distutils.core import setup
+#from distutils.core import setup
+from setuptools import setup
 
 setup(
     name='mimix',
@@ -28,9 +29,14 @@ setup(
     author_email='steve@mixmin.net',
     version='0.1',
     packages=['mimix', ],
-    #scripts=['mimix/foo', ],
+    #scripts=['mimix/mimix', ],
     license='GPLv3',
     url='https://github.com/crooks/mimix',
     long_description=open('README').read(),
     #data_files=[('man/man1', ['man/mimix.1'])],
+    entry_points = {
+        'console_scripts': [
+            'mimix = mimix.Client:main'
+        ]
+    }
 )

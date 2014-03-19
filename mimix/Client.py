@@ -285,79 +285,83 @@ def remailer_conf_walk(conn, url):
         sys.exit(1)
 
 
-parser = argparse.ArgumentParser(description='Mimix Client')
-cmds = parser.add_subparsers(help='Commands')
+def main():
+    parser = argparse.ArgumentParser(description='Mimix Client')
+    cmds = parser.add_subparsers(help='Commands')
 
-send = cmds.add_parser('send', help="Send a message")
-send.set_defaults(func=send_msg)
-send.add_argument('--file', type=str, dest='filename',
-                  help="Read source message from a file")
-send.add_argument('--stdout', dest='stdout', action='store_true',
-                  help=("Write a mimix message to stdout instead of "
-                        "sending it to the first hop."))
-send.add_argument('--chain', type=str, dest='chainstr',
-                  help="Define the Chain a message should use.")
-send.add_argument('--recipient', type=str, dest='recipient',
-                  help="Specify a recipient address (To:)")
-send.add_argument('--sender', type=str, dest='sender',
-                  help="Specify a sender address (From:)")
-send.add_argument('--subject', type=str, dest='subject',
-                  help="Add a Subject header to the message.")
+    send = cmds.add_parser('send', help="Send a message")
+    send.set_defaults(func=send_msg)
+    send.add_argument('--file', type=str, dest='filename',
+                      help="Read source message from a file")
+    send.add_argument('--stdout', dest='stdout', action='store_true',
+                      help=("Write a mimix message to stdout instead of "
+                            "sending it to the first hop."))
+    send.add_argument('--chain', type=str, dest='chainstr',
+                      help="Define the Chain a message should use.")
+    send.add_argument('--recipient', type=str, dest='recipient',
+                      help="Specify a recipient address (To:)")
+    send.add_argument('--sender', type=str, dest='sender',
+                      help="Specify a sender address (From:)")
+    send.add_argument('--subject', type=str, dest='subject',
+                      help="Add a Subject header to the message.")
 
-update = cmds.add_parser('update', help="Perform keyring updates")
-update.set_defaults(func=keyring_update)
-update.add_argument('--fetch', type=str, dest='fetchurl',
-                    help="Fetch a remailer-conf from the specified address")
-update.add_argument('--walk', dest='walk', action='store_true',
-                    help=("Follow known_remailer trail to fetch all known "
-                          "remailers"))
-update.add_argument('--expire', dest='expire', action='store_true',
-                    help="Delete keys/stats for remailers that have expired")
-update.add_argument('--name', type=str, dest='name',
-                    help="Specify a remailer name")
-update.add_argument('--setexit', dest='setexit', action='store_true',
-                    help="Toggle the exit status for the given name")
-update.add_argument('--uptime', type=int, dest='uptime',
-                    help=("Manually set the uptime stats for the specified "
-                          "remailer name"))
-update.add_argument('--latency', type=int, dest='latency',
-                    help=("Manually set the latency (in minutes) for the "
-                          "specified remailer name"))
+    update = cmds.add_parser('update', help="Perform keyring updates")
+    update.set_defaults(func=keyring_update)
+    update.add_argument('--fetch', type=str, dest='fetchurl',
+                        help="Fetch a remailer-conf from the specified address")
+    update.add_argument('--walk', dest='walk', action='store_true',
+                        help=("Follow known_remailer trail to fetch all known "
+                              "remailers"))
+    update.add_argument('--expire', dest='expire', action='store_true',
+                        help="Delete keys/stats for remailers that have expired")
+    update.add_argument('--name', type=str, dest='name',
+                        help="Specify a remailer name")
+    update.add_argument('--setexit', dest='setexit', action='store_true',
+                        help="Toggle the exit status for the given name")
+    update.add_argument('--uptime', type=int, dest='uptime',
+                        help=("Manually set the uptime stats for the specified "
+                              "remailer name"))
+    update.add_argument('--latency', type=int, dest='latency',
+                        help=("Manually set the latency (in minutes) for the "
+                              "specified remailer name"))
 
-info = cmds.add_parser('info', help="Remailer info")
-info.set_defaults(func=remailer_info)
-infogroup = info.add_mutually_exclusive_group(required=True)
-infogroup.add_argument('--keys', dest='listkeys', action='store_true',
-                       help="List all known remailers and their keyids")
-infogroup.add_argument('--stats', dest='liststats', action='store_true',
-                       help="List all known remailers and their stats")
-infogroup.add_argument('--secret', dest='secret', action='store_true',
-                       help="Write a remailer's Secret Key to STDOUT")
-info.add_argument('--exit', dest='exitonly', action='store_true',
-                  help="List only exit remailers")
-info.add_argument('--name', type=str, dest='name',
-                  help="Pass a Remailer's name as an option")
+    info = cmds.add_parser('info', help="Remailer info")
+    info.set_defaults(func=remailer_info)
+    infogroup = info.add_mutually_exclusive_group(required=True)
+    infogroup.add_argument('--keys', dest='listkeys', action='store_true',
+                           help="List all known remailers and their keyids")
+    infogroup.add_argument('--stats', dest='liststats', action='store_true',
+                           help="List all known remailers and their stats")
+    infogroup.add_argument('--secret', dest='secret', action='store_true',
+                           help="Write a remailer's Secret Key to STDOUT")
+    info.add_argument('--exit', dest='exitonly', action='store_true',
+                      help="List only exit remailers")
+    info.add_argument('--name', type=str, dest='name',
+                      help="Pass a Remailer's name as an option")
 
-delete = cmds.add_parser('delete', help="Delete remailers")
-delete.set_defaults(func=remailer_delete)
-delgroup = delete.add_mutually_exclusive_group(required=True)
-delgroup.add_argument('--keyid', type=str, dest='keyid',
-                      help="Delete remailers by keyid")
-delgroup.add_argument('--address', type=str, dest='address',
-                      help="Delete remailers by address")
-delgroup.add_argument('--name', type=str, dest='name',
-                      help="Delete remailers by short name")
+    delete = cmds.add_parser('delete', help="Delete remailers")
+    delete.set_defaults(func=remailer_delete)
+    delgroup = delete.add_mutually_exclusive_group(required=True)
+    delgroup.add_argument('--keyid', type=str, dest='keyid',
+                          help="Delete remailers by keyid")
+    delgroup.add_argument('--address', type=str, dest='address',
+                          help="Delete remailers by address")
+    delgroup.add_argument('--name', type=str, dest='name',
+                          help="Delete remailers by short name")
 
-srvr = cmds.add_parser('server', help="Server mode options")
-srvr.set_defaults(func=server_mode)
-servgroup = srvr.add_mutually_exclusive_group(required=True)
-servgroup.add_argument('--start', dest='start', action='store_true',
-                       help="Start the server daemon")
-servgroup.add_argument('--stop', dest='stop', action='store_true',
-                       help="Stop the server daemon")
-servgroup.add_argument('--run', dest='run', action='store_true',
-                       help="Start the server in a console")
+    srvr = cmds.add_parser('server', help="Server mode options")
+    srvr.set_defaults(func=server_mode)
+    servgroup = srvr.add_mutually_exclusive_group(required=True)
+    servgroup.add_argument('--start', dest='start', action='store_true',
+                           help="Start the server daemon")
+    servgroup.add_argument('--stop', dest='stop', action='store_true',
+                           help="Stop the server daemon")
+    servgroup.add_argument('--run', dest='run', action='store_true',
+                           help="Start the server in a console")
 
-args = parser.parse_args()
-args.func(args)
-#if args.fetch:
+    args = parser.parse_args()
+    args.func(args)
+    #if args.fetch:
+
+if (__name__ == "__main__"):
+    main()
