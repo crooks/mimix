@@ -25,7 +25,9 @@ import hashlib
 import logging
 import os.path
 import sys
+import math
 import libmimix
+import Chain
 from Config import config
 from Crypto.Cipher import AES
 from Crypto.Cipher import PKCS1_OAEP
@@ -95,6 +97,9 @@ Currently, only two Exit-Types are understood:-
     [ Exit Type 0          SMTP to Recipient ]
     [ Exit Type 1    Dummy Message (discard) ]
 
+Note, the Payload lenth defines how much of the Payload is real message (up to
+a maximum of 10240 Bytes) and how much is padding that can be stripped.  In a
+multi-chunk message, only the final chunk should ever be less than 10240 Bytes.
 """
 
 
@@ -514,6 +519,28 @@ class Decode():
         return key, value.strip()
 
 
+def send(conn, payload, chainstr, ptype):
+    chain = Chain.Chain(conn)
+    chain.create()
+    msgid = Random.new().read(16)
+    size = len(payload)
+    numchunks = int(math.ceil(size / 10240.0))
+    for chunk in range(0, numchunks):
+        if chunk > 1:
+            # After each chunk the chain needs to be recreated using the same
+            # exit header as the previous pass.
+            chain.create(chainstr=chain.exitstr)
+        startbyte = chunk * 10240
+        endbyte = (chunk + 1) * 10240
+        exit = ExitEncode()
+        exit.set_chunks(msgid, chunk + 1, numchunks)
+        exit.set_exit_type(ptype)
+        exit.set_payload(payload[startbyte:endbyte])
+        m = Encode(conn)
+        m.encode(exit, chain.chain)
+    return m
+
+
 log = logging.getLogger("mimix.%s" % __name__)
 if (__name__ == "__main__"):
     logfmt = config.get('logging', 'format')
@@ -527,3 +554,11 @@ if (__name__ == "__main__"):
     log.addHandler(handler)
     dbkeys = os.path.join(config.get('database', 'path'),
                           config.get('database', 'directory'))
+    text = """From: test@nowhere.invalid
+To: steve@mixmin.net
+Subject: Testing
+
+Hello World!
+"""
+    with sqlite3.connect(libmimix.dbfn()) as conn:
+        send(conn, text)

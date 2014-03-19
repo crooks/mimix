@@ -229,17 +229,6 @@ def fetch_remailer_conf(url):
     return keys
 
 
-def chunk(msg):
-    s = msg.as_string()
-    size = len(s)
-    numchunks = int(math.ceil(size / 10240.0))
-    for i in range(0, numchunks):
-        s_start = i * 10240
-        s_end = (i + 1) * 10240
-        chunknum = i + 1
-        yield chunknum, numchunks, s[s_start:s_end]
-
-
 def insert_remailer_conf(conn, keys):
     cursor = conn.cursor()
     # If no record exists for this address, we need to perform an
@@ -345,10 +334,11 @@ def textbool(text):
         return False
 
 
-if (__name__ == "__main__"):
-    print fetch_remailer_conf("http://www.mixmin.net:8080")
-    sys.exit(0)
-    dbkeys = os.path.join(config.get('database', 'path'),
+def dbfn():
+    dbfile = os.path.join(config.get('database', 'path'),
                           config.get('database', 'directory'))
-    with sqlite3.connect(dbkeys) as conn:
+    return dbfile
+
+
+if (__name__ == "__main__"):
         pass

@@ -293,30 +293,17 @@ class Server(Daemon):
 
     def inject_dummy(self, odds):
         if random.randint(1, 100) <= odds:
-            chain = Chain.Chain(self.conn)
-            chain.create(config.get('pool', 'dummychain'))
-            log.debug("Injecting Dummy with Chain: %s", chain.chainstr)
-            # Encode the message
-            exit = mix.ExitEncode()
-            # chunks takes: MessageID, ChunkNum, NumChunks
-            exit.set_chunks(Random.new().read(16), 1, 1)
-            exit.set_exit_type(1)
-            exit.set_payload("From: dummy@dummy\nTo: dummy@dummy\n\npayload")
-            m = mix.Encode(self.conn)
-            m.encode(exit, chain.chain)
+            payload = "From: dummy@dummy\nTo: dummy@dummy\n\npayload"
+            m = mix.send(self.conn,
+                        payload,
+                        config.get('pool', 'dummychain'),
+                        1)
             self.out_pool.packet_write(m)
 
     def randhop(self, packet_info):
-        chain = Chain.Chain(self.conn)
-        chain.create('*,*')
-        log.debug("Randhopping message with chain: %s", chain.chainstr)
-        exit = mix.ExitEncode()
-        exit.set_chunks(Random.new().read(16), 1, 1)
-        exit.set_exit_type(0)
-        exit.set_payload(packet_info.payload)
-        m = mix.Encode(self.conn)
-        m.encode(exit, chain.chain)
+        m = mix.send(self.conn, packet_info.payload, "*,*", 0)
         self.out_pool.packet_write(m)
+
 
 class EventTimer(object):
     def __init__(self):

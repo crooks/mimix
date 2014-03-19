@@ -26,7 +26,6 @@ import math
 import sqlite3
 import requests
 import libmimix
-import Chain
 import mix
 import server
 from Crypto import Random
@@ -62,51 +61,26 @@ def send_msg(args):
         if 'From' not in msg:
             msg['From'] = config.get('general', 'sender')
 
-        # Chain creation
-        chain = Chain.Chain(conn)
-        try:
-            chain.create(chainstr=args.chainstr)
-        except Chain.ChainError, e:
-            sys.stderr.write("Chain Error: %s\n" % e)
-            sys.exit(1)
-        sys.stdout.write("Chain: \"%s\"\n" % chain.chainstr)
+        m = mix.send(conn, msg.as_string(), args.chainstr)
 
-        messageid = Random.new().read(16)
-        # Encode the message
-        generator = libmimix.chunk(msg)
-        # Here begins the loop for each message chunk.
-        for c, n, t in generator:
-            if c > 1:
-                # After each chunk the chain needs to be recreated using the
-                # same exit header as the previous pass.
-                chain.create(chainstr=chain.exitstr)
-            sys.stdout.write("Encoding chunk %s of %s\n" % (c, n))
-            exit = mix.ExitEncode()
-            exit.set_chunks(messageid, c, n)
-            exit.set_exit_type(0)
-            exit.set_payload(t)
-            m = mix.Encode(conn)
-            sys.stdout.write("Chain: %s\n" % chain.chain)
-            m.encode(exit, chain.chain)
-
-            if args.stdout:
-                sys.stdout.write(m.text)
-            else:
-                payload = {'base64': m.text}
-                url = '%s/collector.py/msg' % m.send_to_address
-                try:
-                    # Send the message to the first hop.
-                    r = requests.post(url, data=payload)
-                    if r.status_code == requests.codes.ok:
-                        sys.stdout.write("Message delivered to %s\n"
-                                         % m.send_to_address)
-                    else:
-                        sys.stderr.write("Delivery to %s failed with status "
-                                         "code: %s.\n" % (url, r.status_code))
-                except requests.exceptions.ConnectionError:
-                    #TODO Mark down remailer statistics.
-                    sys.stderr.write("Unable to connect to %s.\n"
+        if args.stdout:
+            sys.stdout.write(m.text)
+        else:
+            payload = {'base64': m.text}
+            url = '%s/collector.py/msg' % m.send_to_address
+            try:
+                # Send the message to the first hop.
+                r = requests.post(url, data=payload)
+                if r.status_code == requests.codes.ok:
+                    sys.stdout.write("Message delivered to %s\n"
                                      % m.send_to_address)
+                else:
+                    sys.stderr.write("Delivery to %s failed with status "
+                                     "code: %s.\n" % (url, r.status_code))
+            except requests.exceptions.ConnectionError:
+                #TODO Mark down remailer statistics.
+                sys.stderr.write("Unable to connect to %s.\n"
+                                 % m.send_to_address)
 
 
 def keyring_update(args):
@@ -230,7 +204,7 @@ def server_mode(args):
 
 
 def dbkeys():
-    """Shortcut the simply returns the fully-qualified DB filename.
+    """Shortcut that simply returns the fully-qualified DB filename.
     """
     return os.path.join(config.get('database', 'path'),
                         config.get('database', 'directory'))
